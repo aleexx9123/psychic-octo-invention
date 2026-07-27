@@ -2779,8 +2779,25 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 			end
 		end
 		
-		function FUNCTIONSmodule.refresharea()
-			FUNCTIONSmodule.loader(AREAModuleSelected)
+		function FUNCTIONSmodule.refresharea(preferredModule)
+			if preferredModule then
+				AREAModuleSelected = preferredModule
+			end
+
+			-- Init puede terminar antes de que los módulos estén registrados.
+			-- En ese caso se conserva el contenido en vez de vaciar el panel.
+			if not AREAModuleSelected then
+				for _, availableModule in pairs(getgenv().Modules or {}) do
+					if availableModule then
+						AREAModuleSelected = availableModule
+						break
+					end
+				end
+			end
+
+			if AREAModuleSelected then
+				FUNCTIONSmodule.loader(AREAModuleSelected)
+			end
 		end
 		
 		function FUNCTIONSmodule.dialog(title, description, buttons)
@@ -6509,7 +6526,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		repeat task.wait() until getgenv().Modules
 		getgenv().Modules[1] = module
 		fu.refreshlist()
-		fu.refresharea()
+		-- La columna de módulos está oculta en iPhone: seleccionar MM2 de forma
+		-- explícita evita que el área central se quede vacía por una carrera.
+		fu.refresharea(module)
 
 		-- En móvil el menú debe quedar accesible desde el primer momento. Al
 		-- minimizarlo, el control TS integrado permite volver a abrirlo.
