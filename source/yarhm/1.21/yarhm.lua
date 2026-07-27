@@ -5385,7 +5385,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local espcontainer = espindc.new({ArrowEdgePadding = 50, ArrowShowDistanceText = false,})
 	
 	local playerESP = false
-	local sheriffAimbot = false
+	-- Activa por defecto la corrección de los disparos normales de la pistola.
+	-- El hook está restringido a los remotes del arma y no afecta al cuchillo.
+	local sheriffAimbot = true
 	local coinAutoCollect = false
 	local autoShooting = false
 	local shootOffset = 2.8
