@@ -5994,9 +5994,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 	local silentAimHookInstalled = false
 	local function getSilentAimTarget()
-		if findSheriff() == localplayer then
-			return findMurderer()
-		end
+		return findMurderer()
 	end
 
 	local function installSilentAimHook()
@@ -6009,9 +6007,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			local method = getnamecallmethod()
 			local calledByUs = checkcaller and checkcaller()
 
-			-- La asistencia al tocar la pantalla es exclusiva del sheriff/héroe.
-			-- Si somos murderer, no se modifica ninguna acción normal.
-			if sheriffAimbot and findSheriff() == localplayer and not calledByUs
+			-- Filtrar primero por método y por la pistola equipada. Evitamos buscar
+			-- roles en cada remote del juego, algo que sobrecarga Delta en iPhone.
+			if sheriffAimbot and not calledByUs
 				and (method == "FireServer" or method == "InvokeServer") then
 				local character = localplayer.Character
 				local gun = character and character:FindFirstChild("Gun")
