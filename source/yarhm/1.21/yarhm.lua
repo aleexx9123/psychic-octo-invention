@@ -5385,7 +5385,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local espcontainer = espindc.new({ArrowEdgePadding = 50, ArrowShowDistanceText = false,})
 	
 	local playerESP = false
-	local sheriffAimbot = true
+	local sheriffAimbot = false
 	local coinAutoCollect = false
 	local autoShooting = false
 	local shootOffset = 2.8
@@ -6014,17 +6014,21 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				and (method == "FireServer" or method == "InvokeServer") then
 				local character = localplayer.Character
 				local gun = character and character:FindFirstChild("Gun")
-				local knife = character and character:FindFirstChild("Knife")
-				local belongsToWeapon = (gun and self:IsDescendantOf(gun))
-					or (knife and self:IsDescendantOf(knife))
+				-- No interceptar nunca remotes del cuchillo: el ataque cuerpo a
+				-- cuerpo, el lanzamiento y los poderes comparten ese Tool.
+				local isGunRemote = gun and self:IsDescendantOf(gun)
+					and (
+						(method == "InvokeServer"
+							and (self.Name == "RemoteFunction" or self.Name == "ShootGun"))
+						or (method == "FireServer" and self.Name == "Shoot")
+					)
 
-				if belongsToWeapon then
+				if isGunRemote then
 					local targetPlayer = getSilentAimTarget()
 					if targetPlayer then
-						local extraLead = knife and self:IsDescendantOf(knife) and 0.7 or 0
 						local predictedPosition = getPredictedPosition(
 							targetPlayer,
-							shootOffset + extraLead
+							shootOffset
 						)
 
 						-- MM2 ha usado tanto 0/"AH" (Eclipse antiguo) como
