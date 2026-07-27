@@ -5868,8 +5868,10 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			return Vector3.new(0, 0, 0), "El objetivo no tiene personaje."
 		end
 
-		local targetPart = character:FindFirstChild("UpperTorso")
-			or character:FindFirstChild("HumanoidRootPart")
+		-- ShootGun valida mejor una posición cercana al centro de la raíz que una
+		-- extremidad animada. Esto también funciona igual con avatares R6 y R15.
+		local targetPart = character:FindFirstChild("HumanoidRootPart")
+			or character:FindFirstChild("UpperTorso")
 			or character:FindFirstChild("Torso")
 		local motionPart = character:FindFirstChild("HumanoidRootPart") or targetPart
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -5937,20 +5939,36 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		-- La posición que vemos ya llegó tarde desde el servidor y el disparo todavía
 		-- debe volver a él. Por eso se usa el RTT completo más un margen pequeño para
 		-- las colas de replicación, que suelen notarse más en dispositivos móviles.
-		local manualLead = math.clamp(tonumber(movementPrediction) or 2.8, 0, 5) * 0.012
+		local manualLead = math.clamp(tonumber(movementPrediction) or 2.8, 0, 5) * 0.008
 		local pingScale = math.clamp(tonumber(offsetToPingMult) or 1, 0, 3)
-		local replicationAllowance = 0.012 + math.min(networkPingJitter, 0.06) * 0.5
+		local replicationAllowance = 0.008 + math.min(networkPingJitter, 0.05) * 0.35
 		local leadTime = math.clamp(
 			manualLead + smoothedNetworkPing * pingScale + replicationAllowance,
-			0.035,
-			0.3
+			0.025,
+			0.22
 		)
+
+		-- MoveDirection reacciona antes que AssemblyLinearVelocity cuando el jugador
+		-- gira. Mezclar ambos reduce los fallos en zigzag sin depender de los FPS.
+		local intendedVelocity = humanoid.MoveDirection * humanoid.WalkSpeed
+		local measuredHorizontal = Vector3.new(measuredVelocity.X, 0, measuredVelocity.Z)
+		if intendedVelocity.Magnitude > 0.5 then
+			if measuredHorizontal.Magnitude > 0.5
+				and measuredHorizontal:Dot(intendedVelocity) < 0 then
+				measuredHorizontal = intendedVelocity
+				leadTime = leadTime * 0.55
+			else
+				measuredHorizontal = measuredHorizontal:Lerp(intendedVelocity, 0.35)
+			end
+		elseif measuredHorizontal.Magnitude < 1.25 then
+			measuredHorizontal = Vector3.new(0, 0, 0)
+		end
 
 		-- Se reduce la predicción vertical para no apuntar por encima al saltar.
 		local leadVelocity = Vector3.new(
-			measuredVelocity.X,
+			measuredHorizontal.X,
 			measuredVelocity.Y * 0.35,
-			measuredVelocity.Z
+			measuredHorizontal.Z
 		)
 		return aimPosition + leadVelocity * leadTime
 	end
@@ -5992,7 +6010,10 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 							shootOffset + extraLead
 						)
 
-						if method == "InvokeServer" and args[1] == 1
+						-- MM2 ha usado tanto 0/"AH" (Eclipse antiguo) como
+						-- 1/"AH2" (remote moderno). El destino es el argumento 2.
+						if method == "InvokeServer"
+							and (args[1] == 0 or args[1] == 1)
 							and typeof(args[2]) == "Vector3" then
 							args[2] = predictedPosition
 						elseif method == "FireServer" and typeof(args[2]) == "CFrame" then
@@ -6071,10 +6092,14 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 							local knifeLocal = equippedGun:FindFirstChild("KnifeLocal")
 							local createBeam = knifeLocal and knifeLocal:FindFirstChild("CreateBeam")
 							local remoteFunction = createBeam and createBeam:FindFirstChild("RemoteFunction")
+							local knifeServer = equippedGun:FindFirstChild("KnifeServer")
+							local legacyShootGun = knifeServer and knifeServer:FindFirstChild("ShootGun")
 							local shootRemote = equippedGun:FindFirstChild("Shoot")
 
 							if remoteFunction then
 								remoteFunction:InvokeServer(unpack(args))
+							elseif legacyShootGun then
+								legacyShootGun:InvokeServer(0, predictedPosition, "AH")
 							elseif shootRemote then
 								shootRemote:FireServer(
 									CFrame.new(originPart.Position),
