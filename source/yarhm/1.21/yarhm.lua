@@ -5368,7 +5368,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local espcontainer = espindc.new({ArrowEdgePadding = 50, ArrowShowDistanceText = false,})
 	
 	local playerESP = false
-	local sheriffAimbot = false
+	local sheriffAimbot = true
 	local coinAutoCollect = false
 	local autoShooting = false
 	local shootOffset = 2.8
@@ -5856,60 +5856,165 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	
 	
-	local function getPredictedPosition(player, shootOffset)
-		local usingBasicPred = not predictionAIEngine
-		if predictionOngoing then
-			fu.notification("Cancelando la predicción avanzada; se usará la predicción básica.")
-			usingBasicPred = true
+	-- Predictor ligero para ejecutores móviles. Guarda una sola muestra por jugador:
+	-- no necesita RenderStepped y evita trabajo continuo cuando no se está disparando.
+	local predictionSamples = setmetatable({}, {__mode = "k"})
+	local smoothedNetworkPing
+	local networkPingJitter = 0
+
+	local function getPredictedPosition(player, movementPrediction)
+		local character = player and player.Character
+		if not character then
+			return Vector3.new(0, 0, 0), "El objetivo no tiene personaje."
 		end
-		local ogplayer = player
-		pcall(function()
-			player = player.Character
-			if not player.Character then fu.notification("No hay ningún asesino cuya posición se pueda predecir.") return end
-		end)
-		local playerHRP = player:FindFirstChild("UpperTorso")
-		local playerHum = player:FindFirstChild("Humanoid")
-		if not playerHRP or not playerHum then
-			return Vector3.new(0,0,0), "No se ha podido encontrar el torso del jugador."
+
+		local targetPart = character:FindFirstChild("UpperTorso")
+			or character:FindFirstChild("HumanoidRootPart")
+			or character:FindFirstChild("Torso")
+		local motionPart = character:FindFirstChild("HumanoidRootPart") or targetPart
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if not targetPart or not humanoid or humanoid.Health <= 0 then
+			return Vector3.new(0, 0, 0), "No se ha podido encontrar un objetivo vivo."
 		end
-	
-		local playerPosition = playerHRP.Position
-	
-	
-		if predictionAIEngine and not usingBasicPred and not predictionCooldown and getgenv().TIESASNetwork_predictPos then
-			if (playerPosition - localplayer.Character:FindFirstChild("UpperTorso").Position).Magnitude > 20 then
-				fu.notification("Calculando la trayectoria...")
-				predictionCooldown = true
-				predictionOngoing = true
-				local predictedPosition = getgenv().TIESASNetwork_predictPos(ogplayer)
-				predictionOngoing = false
-				task.spawn(function()
-					task.wait(5)
-					predictionCooldown = false
-				end)
-				return predictedPosition
-			else
-				fu.notification("El asesino está demasiado cerca; se usará la predicción básica.")
+
+		local now = os.clock()
+		local position = motionPart.Position
+		local aimPosition = targetPart.Position
+		local measuredVelocity = motionPart.AssemblyLinearVelocity
+		local horizontalVelocity = Vector3.new(measuredVelocity.X, 0, measuredVelocity.Z)
+
+		-- Los picos de replicación y los teleports producían predicciones enormes.
+		if horizontalVelocity.Magnitude > 45 then
+			horizontalVelocity = horizontalVelocity.Unit * 45
+		end
+		measuredVelocity = Vector3.new(
+			horizontalVelocity.X,
+			math.clamp(measuredVelocity.Y, -50, 50),
+			horizontalVelocity.Z
+		)
+
+		local previous = predictionSamples[player]
+		if previous then
+			local elapsed = now - previous.time
+			if elapsed >= 0.03 and elapsed <= 0.35 then
+				local positionVelocity = (position - previous.position) / elapsed
+				if positionVelocity.Magnitude <= 70 then
+					measuredVelocity = measuredVelocity:Lerp(positionVelocity, 0.25)
+
+					local smoothing = 0.55
+					if previous.velocity.Magnitude > 1 and measuredVelocity.Magnitude > 1
+						and previous.velocity:Dot(measuredVelocity) < 0 then
+						smoothing = 0.8
+					end
+					measuredVelocity = previous.velocity:Lerp(measuredVelocity, smoothing)
+				end
 			end
-		elseif predictionAIEngine and not getgenv().TIESASNetwork.predictPos then
-			fu.notification("La predicción avanzada no está disponible; se usará la básica.")	
 		end
-	
-	
-		local velocity = Vector3.new()
-		velocity = playerHRP.AssemblyLinearVelocity
-		local playerMoveDirection = playerHum.MoveDirection
-		local playerLookVec = playerHRP.CFrame.LookVector
-		local yVelFactor = velocity.Y > 0 and -1 or 0.5
-		local predictedPosition
-		predictedPosition = playerHRP.Position + ((velocity * Vector3.new(0.75, 0.5, 0.75))) * (shootOffset / 15) +playerMoveDirection * shootOffset
-		predictedPosition = predictedPosition * (((localplayer:GetNetworkPing() * 1000) * ((offsetToPingMult - 1) * 0.01)) + 1)
-		-- failed so hard i had to revert back to v1.11 :sob:
-	
-		--predictedPosition = Vector3.new(predictedPositiomurdererHRP.Position + ((murdererVelocity * Vector3.new(0, 0.5, 0))) * (shootOffset / 15) + murderer.Character.Humanoid.MoveDirection * shootOffsetn.X, math.clamp(predictedPosition.Y, playerPosition.Y - 2, playerPosition.Y + 2), predictedPosition.Z)
-	
-	
-		return predictedPosition
+
+		predictionSamples[player] = {
+			position = position,
+			velocity = measuredVelocity,
+			time = now,
+		}
+
+		-- GetNetworkPing ya devuelve segundos. El código anterior multiplicaba todas
+		-- las coordenadas mundiales por el ping y desviaba el disparo.
+		local networkPing = 0
+		pcall(function()
+			networkPing = localplayer:GetNetworkPing()
+		end)
+		networkPing = math.clamp(networkPing, 0, 0.35)
+		if not smoothedNetworkPing then
+			smoothedNetworkPing = networkPing
+		else
+			local pingDifference = math.abs(networkPing - smoothedNetworkPing)
+			networkPingJitter = networkPingJitter + (pingDifference - networkPingJitter) * 0.2
+			local pingSmoothing = pingDifference > 0.08 and 0.35 or 0.18
+			smoothedNetworkPing = smoothedNetworkPing
+				+ (networkPing - smoothedNetworkPing) * pingSmoothing
+		end
+
+		-- La posición que vemos ya llegó tarde desde el servidor y el disparo todavía
+		-- debe volver a él. Por eso se usa el RTT completo más un margen pequeño para
+		-- las colas de replicación, que suelen notarse más en dispositivos móviles.
+		local manualLead = math.clamp(tonumber(movementPrediction) or 2.8, 0, 5) * 0.012
+		local pingScale = math.clamp(tonumber(offsetToPingMult) or 1, 0, 3)
+		local replicationAllowance = 0.012 + math.min(networkPingJitter, 0.06) * 0.5
+		local leadTime = math.clamp(
+			manualLead + smoothedNetworkPing * pingScale + replicationAllowance,
+			0.035,
+			0.3
+		)
+
+		-- Se reduce la predicción vertical para no apuntar por encima al saltar.
+		local leadVelocity = Vector3.new(
+			measuredVelocity.X,
+			measuredVelocity.Y * 0.35,
+			measuredVelocity.Z
+		)
+		return aimPosition + leadVelocity * leadTime
+	end
+
+	local silentAimHookInstalled = false
+	local function getSilentAimTarget()
+		if findSheriff() == localplayer then
+			return findMurderer() or findSheriffThatsNotMe()
+		end
+		if findMurderer() == localplayer then
+			return findNearestPlayer()
+		end
+	end
+
+	local function installSilentAimHook()
+		if silentAimHookInstalled then return true end
+		if not hookmetamethod or not getnamecallmethod then return false end
+
+		local oldNamecall
+		local callback = function(self, ...)
+			local args = {...}
+			local method = getnamecallmethod()
+			local calledByUs = checkcaller and checkcaller()
+
+			if sheriffAimbot and not calledByUs
+				and (method == "FireServer" or method == "InvokeServer") then
+				local character = localplayer.Character
+				local gun = character and character:FindFirstChild("Gun")
+				local knife = character and character:FindFirstChild("Knife")
+				local belongsToWeapon = (gun and self:IsDescendantOf(gun))
+					or (knife and self:IsDescendantOf(knife))
+
+				if belongsToWeapon then
+					local targetPlayer = getSilentAimTarget()
+					if targetPlayer then
+						local extraLead = knife and self:IsDescendantOf(knife) and 0.7 or 0
+						local predictedPosition = getPredictedPosition(
+							targetPlayer,
+							shootOffset + extraLead
+						)
+
+						if method == "InvokeServer" and args[1] == 1
+							and typeof(args[2]) == "Vector3" then
+							args[2] = predictedPosition
+						elseif method == "FireServer" and typeof(args[2]) == "CFrame" then
+							args[2] = CFrame.new(predictedPosition)
+						end
+					end
+				end
+			end
+
+			return oldNamecall(self, unpack(args))
+		end
+
+		if newcclosure then
+			callback = newcclosure(callback)
+		end
+		oldNamecall = hookmetamethod(game, "__namecall", callback)
+		silentAimHookInstalled = oldNamecall ~= nil
+		return silentAimHookInstalled
+	end
+
+	if not installSilentAimHook() then
+		sheriffAimbot = false
 	end
 	
 	
@@ -5923,30 +6028,33 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 					task.wait(0.1)
 					local murderer = findMurderer()
 					if not murderer then fu.notification("No se ha encontrado al asesino.") continue end
-					local murdererPosition = murderer.Character.HumanoidRootPart.Position
-					local characterRootPart = localplayer.Character.HumanoidRootPart
-					local rayDirection = murdererPosition - characterRootPart.Position
+					local murdererCharacter = murderer.Character
+					local murdererRoot = murdererCharacter and murdererCharacter:FindFirstChild("HumanoidRootPart")
+					local localCharacter = localplayer.Character
+					local characterRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+					if not murdererRoot or not characterRootPart then continue end
+
+					local gun = localCharacter:FindFirstChild("Gun")
+					local originPart = (gun and gun:FindFirstChild("Handle"))
+						or localCharacter:FindFirstChild("RightHand")
+						or characterRootPart
+					local rayOrigin = originPart.Position
+					local rayDirection = murdererRoot.Position - rayOrigin
 	
 					local raycastParams = RaycastParams.new()
 					raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-					raycastParams.FilterDescendantsInstances = {localplayer.Character}
+					raycastParams.FilterDescendantsInstances = {localCharacter}
 	
-					local hit = workspace:Raycast(characterRootPart.Position, rayDirection, raycastParams)
-					if not hit or hit.Instance.Parent == murderer.Character then -- Check if nothing collides or if it collides with the murderer
-						fu.notification("¡Disparo automático!")
-						if not localplayer.Character:FindFirstChild("Gun") then
-							local hum = localplayer.Character:FindFirstChild("Humanoid")
-							if localplayer.Backpack:FindFirstChild("Gun") then
-								localplayer.Character:FindFirstChild("Humanoid"):EquipTool(localplayer.Backpack:FindFirstChild("Gun"))
+					local hit = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+					if not hit or hit.Instance:IsDescendantOf(murdererCharacter) then
+						if not localCharacter:FindFirstChild("Gun") then
+							local hum = localCharacter:FindFirstChild("Humanoid")
+							if hum and localplayer.Backpack:FindFirstChild("Gun") then
+								hum:EquipTool(localplayer.Backpack:FindFirstChild("Gun"))
 							else
 								fu.notification("No tienes el arma.")
 								return
 							end
-						end
-						local murdererHRP = murderer.Character:FindFirstChild("HumanoidRootPart")
-						if not murdererHRP then
-							fu.notification("No se ha podido localizar al asesino.")
-							return
 						end
 	
 						local predictedPosition = getPredictedPosition(murderer, shootOffset)
@@ -5956,9 +6064,24 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 							[2] = predictedPosition,
 							[3] = "AH2"
 						}
-	
-	
-						localplayer.Character.Gun.KnifeLocal.CreateBeam.RemoteFunction:InvokeServer(unpack(args))
+
+						local equippedGun = localCharacter:FindFirstChild("Gun")
+							or localCharacter:WaitForChild("Gun", 0.5)
+						if equippedGun then
+							local knifeLocal = equippedGun:FindFirstChild("KnifeLocal")
+							local createBeam = knifeLocal and knifeLocal:FindFirstChild("CreateBeam")
+							local remoteFunction = createBeam and createBeam:FindFirstChild("RemoteFunction")
+							local shootRemote = equippedGun:FindFirstChild("Shoot")
+
+							if remoteFunction then
+								remoteFunction:InvokeServer(unpack(args))
+							elseif shootRemote then
+								shootRemote:FireServer(
+									CFrame.new(originPart.Position),
+									CFrame.new(predictedPosition)
+								)
+							end
+						end
 	
 	
 	
@@ -6091,6 +6214,28 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	table.insert(module, {
 		Type = "Text",
 		Args = {"ACCIÓN CONTEXTUAL"}
+	})
+
+	table.insert(module, {
+		Type = "ButtonGrid",
+		Toggleable = true,
+		DefaultStates = sheriffAimbot and {"Puntería_asistida"} or nil,
+		Args = {1, {
+			["Puntería_asistida"] = function()
+				if sheriffAimbot then
+					sheriffAimbot = false
+					fu.notification("Puntería asistida desactivada.")
+					return
+				end
+
+				if installSilentAimHook() then
+					sheriffAimbot = true
+					fu.notification("Puntería asistida activada.")
+				else
+					fu.notification("Este executor no permite interceptar el disparo.")
+				end
+			end,
+		}}
 	})
 	
 	local instakillshoot = false
@@ -6259,15 +6404,13 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	table.insert(module, {
 		Type = "Input",
 		Args = {"Predicción de movimiento", "Aplicar", function(Self, text)
-			if not tonumber(text) then fu.notification("Introduce un número válido.") return end
-	
-			if tonumber(text) > 5 then
-				fu.notification("Un valor superior a 5 puede reducir la precisión.")
+			local value = tonumber(text)
+			if not value then fu.notification("Introduce un número válido.") return end
+			if value < 0 or value > 5 then
+				fu.notification("Usa un valor entre 0 y 5.")
+				return
 			end
-			if tonumber(text) < 0 then
-				fu.notification("Un valor negativo apuntará detrás del objetivo.")
-			end
-			shootOffset = tonumber(text)
+			shootOffset = value
 			fu.notification("Predicción actualizada.")
 		end,}
 	})
@@ -6275,27 +6418,25 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	table.insert(module, {
 		Type = "Input",
 		Args = {"Ajuste según el ping", "Aplicar", function(Self, text)
-			if not tonumber(text) then fu.notification("Introduce un número válido.") return end
-	
-			if tonumber(text) > 5 then
-				fu.notification("Un valor superior a 5 puede reducir la precisión.")
+			local value = tonumber(text)
+			if not value then fu.notification("Introduce un número válido.") return end
+			if value < 0 or value > 3 then
+				fu.notification("Usa un valor entre 0 y 3.")
+				return
 			end
-			if tonumber(text) < 0 then
-				fu.notification("El ajuste de ping no puede ser negativo.")
-			end
-			offsetToPingMult = tonumber(text)
+			offsetToPingMult = value
 			fu.notification("Ajuste de ping actualizado.")
 		end,}
 	})
 	
 	table.insert(module, {
 		Type = "Text",
-		Args = {"La predicción adelanta el disparo o cuchillo según el movimiento. Recomendado: 2.8."}
+		Args = {"Predicción móvil automática. Base recomendada: 2.8."}
 	})
 	
 	table.insert(module, {
 		Type = "Text",
-		Args = {"El ajuste de ping adapta la predicción a la latencia. Valor predeterminado: 1."}
+		Args = {"El ping se suaviza automáticamente. Deja su ajuste en 1.0."}
 	})
 
 	if true then
