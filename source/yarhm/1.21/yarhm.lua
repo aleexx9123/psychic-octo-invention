@@ -5995,10 +5995,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local silentAimHookInstalled = false
 	local function getSilentAimTarget()
 		if findSheriff() == localplayer then
-			return findMurderer() or findSheriffThatsNotMe()
-		end
-		if findMurderer() == localplayer then
-			return findNearestPlayer()
+			return findMurderer()
 		end
 	end
 
@@ -6012,7 +6009,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			local method = getnamecallmethod()
 			local calledByUs = checkcaller and checkcaller()
 
-			if sheriffAimbot and not calledByUs
+			-- La asistencia al tocar la pantalla es exclusiva del sheriff/héroe.
+			-- Si somos murderer, no se modifica ninguna acción normal.
+			if sheriffAimbot and findSheriff() == localplayer and not calledByUs
 				and (method == "FireServer" or method == "InvokeServer") then
 				local character = localplayer.Character
 				local gun = character and character:FindFirstChild("Gun")
