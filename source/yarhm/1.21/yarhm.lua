@@ -503,7 +503,7 @@ Converted["_TextBox"].Parent = Converted["_TextBoxPlaceholder"]
 Converted["_UICorner6"].Parent = Converted["_TextBox"]
 
 Converted["_FloatingButton"].Font = Enum.Font.Unknown
-Converted["_FloatingButton"].Text = "ATACAR"
+Converted["_FloatingButton"].Text = "SHOOT"
 Converted["_FloatingButton"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_FloatingButton"].TextScaled = true
 Converted["_FloatingButton"].TextSize = 14
@@ -6213,9 +6213,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			end
 		end
 	end)
-	table.insert(module, {
+	local shootButtonItem = {
 		Type = "Button",
-		Args = {"ATACAR", function()
+		Args = {"SHOOT", function()
 			if not isRoundActive() then
 				fu.notification("Necesitas estar en una partida activa para atacar.")
 				return
@@ -6233,10 +6233,11 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			elseif findMurderer() == localplayer then
 				knifeThrow()
 			else
-				fu.notification("ATACAR está disponible cuando seas sheriff, héroe o asesino.")
+				fu.notification("SHOOT está disponible cuando seas sheriff, héroe o asesino.")
 			end
 		end}
-	})
+	}
+	table.insert(module, shootButtonItem)
 	
 	
 	
@@ -6343,6 +6344,23 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		getgenv().Modules[1] = module
 		fu.refreshlist()
 		fu.refresharea()
+
+		-- Modo compacto: al cargar la ronda no queda ningún panel abierto.
+		local gui = getgenv().TIESAS
+		gui.Menu.Visible = false
+		gui.Open.Visible = false
+		gui.Dropdown.Visible = false
+		gui.Dialog.Visible = false
+
+		-- El único control permanente es SHOOT. Se puede arrastrar y,
+		-- manteniéndolo pulsado, abrir el ajuste para agrandarlo o achicarlo.
+		for _, child in ipairs(gui.FloatingButtons:GetChildren()) do
+			if child:IsA("TextButton") and child.Name ~= "SHOOT" then
+				child:Destroy()
+			end
+		end
+		fu.createFloatingButton(shootButtonItem, Instance.new("TextButton"), "SHOOT")
+		fu.notification("SHOOT listo: arrástralo para moverlo y mantenlo pulsado para cambiar su tamaño.")
 		return
 	end
 	
