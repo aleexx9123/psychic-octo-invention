@@ -1782,20 +1782,21 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 		
 		FUNCTIONSmodule.theme = {
 			font = Enum.Font.Montserrat,
-			textColor = Color3.fromRGB(255, 255, 255),
-			accentColor = Color3.fromRGB(197, 0, 0),
-			primaryColor = Color3.fromRGB(22, 22, 22),
-			secondaryColor = Color3.fromRGB(12, 12, 12),
+			textColor = Color3.fromRGB(69, 61, 82),
+			accentColor = Color3.fromRGB(188, 166, 224),
+			primaryColor = Color3.fromRGB(255, 248, 252),
+			secondaryColor = Color3.fromRGB(242, 232, 247),
 		
-			backgroundColorCSQ = ColorSequence.new(Color3.fromRGB(36, 36, 36), Color3.fromRGB(68, 68, 68)),	
+			backgroundColorCSQ = ColorSequence.new(Color3.fromRGB(233, 222, 246), Color3.fromRGB(252, 228, 238)),	
 			strokeColorCSQ = ColorSequence.new{
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(53.00000064074993, 53.00000064074993, 53.00000064074993)),
-				ColorSequenceKeypoint.new(0.15224914252758026, Color3.fromRGB(50.69031357765198, 50.69031357765198, 50.69031357765198)),
-				ColorSequenceKeypoint.new(0.4723183512687683, Color3.fromRGB(255, 0, 4.000000236555934)),
-				ColorSequenceKeypoint.new(0.7577854990959167, Color3.fromRGB(50.13314567506313, 50.13314567506313, 50.13314567506313)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(48.000000938773155, 48.000000938773155, 48.000000938773155))
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(194, 231, 218)),
+				ColorSequenceKeypoint.new(0.25, Color3.fromRGB(213, 195, 239)),
+				ColorSequenceKeypoint.new(0.5, Color3.fromRGB(250, 196, 216)),
+				ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 222, 190)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(194, 231, 218))
 			},
 		}
+		if getgenv then getgenv().YARHM_THEME = FUNCTIONSmodule.theme end
 		
 		function FUNCTIONSmodule.getTheme()
 			if getgenv then
@@ -2375,6 +2376,12 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 						button.Parent = frame
 		
 						--print(args)
+						if States[buttonname .. module.Name] == nil
+							and item["DefaultStates"]
+							and table.find(item["DefaultStates"], buttonname)
+						then
+							States[buttonname .. module.Name] = true
+						end
 						button.BackgroundColor3 = FUNCTIONSmodule.getTheme().primaryColor
 						if States[buttonname .. module.Name] then
 							button.BackgroundColor3 = FUNCTIONSmodule.getTheme().accentColor
@@ -2856,18 +2863,18 @@ do -- Routine Module: StarterGui.YARHM.Theme
 		local api = {
 			colors = {
 				font = Enum.Font.Montserrat,
-				textColor = Color3.fromRGB(255, 255, 255),
-				accentColor = Color3.fromRGB(197, 0, 0),
-				primaryColor = Color3.fromRGB(22, 22, 22),
-				secondaryColor = Color3.fromRGB(12, 12, 12),
+				textColor = Color3.fromRGB(69, 61, 82),
+				accentColor = Color3.fromRGB(188, 166, 224),
+				primaryColor = Color3.fromRGB(255, 248, 252),
+				secondaryColor = Color3.fromRGB(242, 232, 247),
 		
-				backgroundColorCSQ = ColorSequence.new(Color3.fromRGB(36, 36, 36), Color3.fromRGB(68, 68, 68)),	
+				backgroundColorCSQ = ColorSequence.new(Color3.fromRGB(233, 222, 246), Color3.fromRGB(252, 228, 238)),	
 				strokeColorCSQ = ColorSequence.new{
-					ColorSequenceKeypoint.new(0, Color3.fromRGB(53.00000064074993, 53.00000064074993, 53.00000064074993)),
-					ColorSequenceKeypoint.new(0.15224914252758026, Color3.fromRGB(50.69031357765198, 50.69031357765198, 50.69031357765198)),
-					ColorSequenceKeypoint.new(0.4723183512687683, Color3.fromRGB(255, 0, 4.000000236555934)),
-					ColorSequenceKeypoint.new(0.7577854990959167, Color3.fromRGB(50.13314567506313, 50.13314567506313, 50.13314567506313)),
-					ColorSequenceKeypoint.new(1, Color3.fromRGB(48.000000938773155, 48.000000938773155, 48.000000938773155))
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(194, 231, 218)),
+					ColorSequenceKeypoint.new(0.25, Color3.fromRGB(213, 195, 239)),
+					ColorSequenceKeypoint.new(0.5, Color3.fromRGB(250, 196, 216)),
+					ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 222, 190)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(194, 231, 218))
 				},
 			}
 		}
@@ -2875,6 +2882,7 @@ do -- Routine Module: StarterGui.YARHM.Theme
 		local themeObjects = {
 			font = {},
 			textColor = {},
+			accentColor = {},
 			primaryColor = {},
 			secondaryColor = {},
 			backgroundColorCSQ = {},
@@ -2885,9 +2893,11 @@ do -- Routine Module: StarterGui.YARHM.Theme
 		
 		-- value method matching
 		function api:sortObjects(gui)
-			for _, obj in next, gui:getDescendants() do
+			for _, obj in next, gui:GetDescendants() do
 				if obj:FindFirstChild("themedColor") then 
-					if obj:FindFirstChild("themedColor").Value == "primaryColor" then
+					if obj:FindFirstChild("themedColor").Value == "accentColor" then
+						table.insert(themeObjects.accentColor, obj)
+					elseif obj:FindFirstChild("themedColor").Value == "primaryColor" then
 						table.insert(themeObjects.primaryColor, obj)
 					elseif obj:FindFirstChild("themedColor").Value == "secondaryColor" then
 						table.insert(themeObjects.secondaryColor, obj)
@@ -2899,7 +2909,7 @@ do -- Routine Module: StarterGui.YARHM.Theme
 						warn("FRAME unknown obj: "..obj.Name)
 					end
 				end
-				if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+				if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
 					--print("found obj")
 					
 					table.insert(themeObjects.font, obj)
@@ -2964,15 +2974,20 @@ do -- Routine Module: StarterGui.YARHM.Theme
 				for _, obj in next, themeObjects.textColor do
 					obj.TextColor3 = newColor
 				end
+			elseif colorType == "accentColor" then
+				for _, obj in next, themeObjects.accentColor do
+					local s=pcall(function() obj.Color = newColor end)
+					if not s then obj.BackgroundColor3 = newColor end
+				end
 			elseif colorType == "primaryColor" then
 				for _, obj in next, themeObjects.primaryColor do
-					local s=pcall(function() obj.Color = newColor end) if s then return end
-					obj.BackgroundColor3 = newColor
+					local s=pcall(function() obj.Color = newColor end)
+					if not s then obj.BackgroundColor3 = newColor end
 				end
 			elseif colorType == "secondaryColor" then
 				for _, obj in next, themeObjects.secondaryColor do
-					local s=pcall(function() obj.Color = newColor end) if s then return end
-					obj.BackgroundColor3 = newColor
+					local s=pcall(function() obj.Color = newColor end)
+					if not s then obj.BackgroundColor3 = newColor end
 				end
 			elseif colorType == "backgroundColorCSQ" then
 				for _, obj in next, themeObjects.backgroundColorCSQ do
@@ -4912,7 +4927,7 @@ local function DSZIHQM_routine() -- Routine: StarterGui.YARHM.Init
 	script.Parent.Menu.CloseArea.AllowForSpring:Fire()
 	task.wait(1)
 	require(script.Parent.FUNCTIONS).loadFloatingButtons()
-	--require(script.Parent.Theme):init(getgenv().YARHM)
+	require(script.Parent.Theme):init(getgenv().YARHM)
 	
 	--require(script.Parent.FUNCTIONS).refreshlist()
 	--require(script.Parent.FUNCTIONS).refresharea()
@@ -5285,7 +5300,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 
 
 	local module = {}
-	module["gameId"] = 0 -- 66654135 -- Restrict module to a certain game ID only. 0 allows all games.
+	module["gameId"] = 66654135
 	
 	local fu = require(getgenv().YARHM.FUNCTIONS)
 	local espindc = require(script.Parent.ESPIndicator)
@@ -5331,6 +5346,35 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	local rs = game:GetService("RunService")
 	
 	local claimedCoins = {}
+
+	local function getMap()
+		for _, object in ipairs(workspace:GetChildren()) do
+			if object:FindFirstChild("CoinContainer") and object:FindFirstChild("Spawns") then
+				return object
+			end
+		end
+		return nil
+	end
+
+	local function isMapModel(object)
+		return object
+			and object:FindFirstChild("CoinContainer")
+			and object:FindFirstChild("Spawns")
+	end
+
+	local function findDroppedGun()
+		local map = getMap()
+		return map and map:FindFirstChild("GunDrop", true) or nil
+	end
+
+	local function isRoundActive()
+		return getMap() ~= nil
+	end
+
+	local autoFeaturesEnabled = isRoundActive()
+	playerESP = autoFeaturesEnabled
+	gunDropESP = autoFeaturesEnabled
+	trapDetection = autoFeaturesEnabled
 	
 	local function findMurderer()
 	
@@ -5523,8 +5567,9 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	
 				local localRootPart = localPlayer.Character:FindFirstChild("HumanoidRootPart")
 				local otherRootPart = player.Character:FindFirstChild("HumanoidRootPart")
+				local otherHumanoid = player.Character:FindFirstChildOfClass("Humanoid")
 	
-				if localRootPart and otherRootPart then
+				if localRootPart and otherRootPart and otherHumanoid and otherHumanoid.Health > 0 then
 					local distance = (localRootPart.Position - otherRootPart.Position).Magnitude
 	
 					if distance < shortestDistance then
@@ -5541,17 +5586,6 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	function miniFling(playerToFling)
 		local a=game.Players.LocalPlayer;local b=a:GetMouse()local c={playerToFling}local d=game:GetService("Players")local e=d.LocalPlayer;local f=false;local g=function(h)local i=e.Character;local j=i and i:FindFirstChildOfClass("Humanoid")local k=j and j.RootPart;local l=h.Character;local m;local n;local o;local p;local q;if l:FindFirstChildOfClass("Humanoid")then m=l:FindFirstChildOfClass("Humanoid")end;if m and m.RootPart then n=m.RootPart end;if l:FindFirstChild("Head")then o=l.Head end;if l:FindFirstChildOfClass("Accessory")then p=l:FindFirstChildOfClass("Accessory")end;if p and p:FindFirstChild("Handle")then q=p.Handle end;if i and j and k then if k.Velocity.Magnitude<50 then getgenv().OldPos=k.CFrame end;if m and m.Sit and not f then end;if o then if o.Velocity.Magnitude>500 then fu.dialog("Player flung","Player is already flung. Fling again?",{"Fling again","No"})if fu.waitfordialog()=="No"then return fu.closedialog()end;fu.closedialog()end elseif not o and q then if q.Velocity.Magnitude>500 then fu.dialog("Player flung","Player is already flung. Fling again?",{"Fling again","No"})if fu.waitfordialog()=="No"then return fu.closedialog()end;fu.closedialog()end end;if o then workspace.CurrentCamera.CameraSubject=o elseif not o and q then workspace.CurrentCamera.CameraSubject=q elseif m and n then workspace.CurrentCamera.CameraSubject=m end;if not l:FindFirstChildWhichIsA("BasePart")then return end;local r=function(s,t,u)k.CFrame=CFrame.new(s.Position)*t*u;i:SetPrimaryPartCFrame(CFrame.new(s.Position)*t*u)k.Velocity=Vector3.new(9e7,9e7*10,9e7)k.RotVelocity=Vector3.new(9e8,9e8,9e8)end;local v=function(s)local w=2;local x=tick()local y=0;repeat if k and m then if s.Velocity.Magnitude<50 then y=y+100;r(s,CFrame.new(0,1.5,0)+m.MoveDirection*s.Velocity.Magnitude/1.25,CFrame.Angles(math.rad(y),0,0))task.wait()r(s,CFrame.new(0,-1.5,0)+m.MoveDirection*s.Velocity.Magnitude/1.25,CFrame.Angles(math.rad(y),0,0))task.wait()r(s,CFrame.new(2.25,1.5,-2.25)+m.MoveDirection*s.Velocity.Magnitude/1.25,CFrame.Angles(math.rad(y),0,0))task.wait()r(s,CFrame.new(-2.25,-1.5,2.25)+m.MoveDirection*s.Velocity.Magnitude/1.25,CFrame.Angles(math.rad(y),0,0))task.wait()r(s,CFrame.new(0,1.5,0)+m.MoveDirection,CFrame.Angles(math.rad(y),0,0))task.wait()r(s,CFrame.new(0,-1.5,0)+m.MoveDirection,CFrame.Angles(math.rad(y),0,0))task.wait()else r(s,CFrame.new(0,1.5,m.WalkSpeed),CFrame.Angles(math.rad(90),0,0))task.wait()r(s,CFrame.new(0,-1.5,-m.WalkSpeed),CFrame.Angles(0,0,0))task.wait()r(s,CFrame.new(0,1.5,m.WalkSpeed),CFrame.Angles(math.rad(90),0,0))task.wait()r(s,CFrame.new(0,1.5,n.Velocity.Magnitude/1.25),CFrame.Angles(math.rad(90),0,0))task.wait()r(s,CFrame.new(0,-1.5,-n.Velocity.Magnitude/1.25),CFrame.Angles(0,0,0))task.wait()r(s,CFrame.new(0,1.5,n.Velocity.Magnitude/1.25),CFrame.Angles(math.rad(90),0,0))task.wait()r(s,CFrame.new(0,-1.5,0),CFrame.Angles(math.rad(90),0,0))task.wait()r(s,CFrame.new(0,-1.5,0),CFrame.Angles(0,0,0))task.wait()r(s,CFrame.new(0,-1.5,0),CFrame.Angles(math.rad(-90),0,0))task.wait()r(s,CFrame.new(0,-1.5,0),CFrame.Angles(0,0,0))task.wait()end else break end until s.Velocity.Magnitude>500 or s.Parent~=h.Character or h.Parent~=d or h.Character~=l or m.Sit or j.Health<=0 or tick()>x+w end;workspace.FallenPartsDestroyHeight=0/0;local z=Instance.new("BodyVelocity")z.Name="EpixVel"z.Parent=k;z.Velocity=Vector3.new(9e8,9e8,9e8)z.MaxForce=Vector3.new(1/0,1/0,1/0)j:SetStateEnabled(Enum.HumanoidStateType.Seated,false)if n and o then if(n.CFrame.p-o.CFrame.p).Magnitude>5 then v(o)else v(n)end elseif n and not o then v(n)elseif not n and o then v(o)elseif not n and not o and p and q then v(q)else fu.notification("Can't find a proper part of target player to fling.")end;z:Destroy()j:SetStateEnabled(Enum.HumanoidStateType.Seated,true)workspace.CurrentCamera.CameraSubject=j;repeat k.CFrame=getgenv().OldPos*CFrame.new(0,.5,0)i:SetPrimaryPartCFrame(getgenv().OldPos*CFrame.new(0,.5,0))j:ChangeState("GettingUp")table.foreach(i:GetChildren(),function(A,B)if B:IsA("BasePart")then B.Velocity,B.RotVelocity=Vector3.new(),Vector3.new()end end)task.wait()until(k.Position-getgenv().OldPos.p).Magnitude<25;workspace.FallenPartsDestroyHeight=getgenv().FPDH else fu.notification("No valid character of said target player. May have died.")end end;g(c[1])
 	end
-	
-	function getMap()
-		for _, o in ipairs(workspace:GetChildren()) do
-			if o:FindFirstChild("CoinContainer") and o:FindFirstChild("Spawns") then
-				return o
-			end
-		end
-		return nil
-	end
-	
-	
 	
 	--task.spawn(function() 
 	--	if game:GetService("RunService"):IsStudio() then return end -- :)
@@ -5583,18 +5617,20 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	
 	-- Player ESP
 	workspace.ChildAdded:Connect(function(ch)
-		if ch == getMap() and playerESP then
+		if isMapModel(ch) and playerESP then
 			fu.notification("Map has loaded, waiting for roles...")
-			repeat
-				task.wait(1)
-			until findMurderer()
-	
-			fu.notification("Player ESP reloaded.")
+			task.spawn(function()
+				repeat task.wait(0.5) until not ch.Parent or findMurderer() or findSheriff()
+				if ch.Parent then
+					reloadESP()
+					fu.notification("Player ESP reloaded.")
+				end
+			end)
 		end
 	end)
 	
 	workspace.ChildRemoved:Connect(function(ch)
-		if ch == getMap() and playerESP then
+		if isMapModel(ch) and playerESP then
 			fu.notification("Game ended, removing Player ESPs.")
 			playerData = {}
 			espcontainer:ClearAllGroups()
@@ -5646,9 +5682,10 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 			if autoGetDroppedGun then
 				fu.notification("Auto get dropped gun - Cooling down...")
 				task.wait(1)
-				if not getMap():FindFirstChild("GunDrop") then fu.notification("No dropped gun to be teleported to.") return end
+				local droppedGun = findDroppedGun()
+				if not droppedGun then fu.notification("No dropped gun to be teleported to.") return end
 				local previousPosition = localplayer.Character:GetPivot()
-				localplayer.Character:MoveTo(getMap():FindFirstChild("GunDrop").Position)
+				localplayer.Character:MoveTo(droppedGun.Position)
 				localplayer.Backpack.ChildAdded:Wait()
 				localplayer.Character:PivotTo(previousPosition)
 			end
@@ -5660,7 +5697,10 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 			espcontainer:RemoveGroup("gun")
 			fu.notification("Someone has took the dropped gun.")
 			task.wait(1)
-			fu.notification("The hero is " .. findSheriff().DisplayName .. ".")
+			local hero = findSheriff()
+			if hero then
+				fu.notification("The hero is " .. hero.DisplayName .. ".")
+			end
 			reloadESP()
 			--if playerESP then
 			--	for _, v in ipairs(script.Parent:GetChildren()) do
@@ -5884,20 +5924,23 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	table.insert(module, {
 		Type = "ButtonGrid",
 		Toggleable = true,
+		DefaultStates = autoFeaturesEnabled and {"Players", "Dropped_Gun", "Traps"} or nil,
 		Args = {2, {
 			Players = function()
 				if playerESP then
 					playerESP = false
 					espcontainer:RemoveGroup("players")
 				else
+					if not isRoundActive() then
+						fu.notification("You need to be in an active match to enable MM2 ESPs.")
+						return
+					end
 					playerESP = true
 					if not findMurderer() or not findSheriff() then
 						fu.notification("No roles yet. Waiting for roles...")
-						repeat
-							task.wait(1)
-						until findSheriff() or findMurderer()
+						repeat task.wait(0.5) until not getMap() or findSheriff() or findMurderer()
 					end
-					reloadESP()
+					if getMap() then reloadESP() end
 				end
 			end,
 	
@@ -5908,8 +5951,9 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 				else
 					gunDropESP = true
 					if not getMap() then return end
-					if getMap():FindFirstChild("GunDrop") then
-						espcontainer:Add(getMap():FindFirstChild("GunDrop"), {
+					local droppedGun = findDroppedGun()
+					if droppedGun then
+						espcontainer:Add(droppedGun, {
 							AccentColor    =  Color3.new(0.952941, 1, 0.0745098),
 							ArrowShow        = true,
 							ArrowMinDistance       = 999999,      
@@ -5946,6 +5990,43 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 			end,
 		}}
 	})
+
+	task.defer(function()
+		if not autoFeaturesEnabled then
+			fu.notification("Necesitas estar dentro de una partida activa para ejecutar las funciones de MM2.")
+			return
+		end
+
+		reloadESP()
+
+		local droppedGun = findDroppedGun()
+		if droppedGun then
+			espcontainer:Add(droppedGun, {
+				AccentColor = Color3.fromRGB(255, 224, 145),
+				ArrowShow = true,
+				ArrowMinDistance = 999999,
+				ArrowSize = UDim2.new(0, 40, 0, 40),
+				LabelText = "Dropped gun!",
+				ShowLabel = true,
+				GroupName = "gun"
+			})
+		end
+
+		for _, object in ipairs(workspace:GetDescendants()) do
+			if object.Name == "Trap" and (object.Parent:IsA("Folder") or object.Parent:IsA("Model")) then
+				object.Transparency = 0
+				espcontainer:Add(object, {
+					AccentColor = Color3.fromRGB(255, 167, 174),
+					ArrowShow = false,
+					ShowLabel = true,
+					LabelText = "Trap",
+					GroupName = "trap"
+				})
+			end
+		end
+
+		fu.notification("Players ESP, dropped gun ESP and traps ESP activated.")
+	end)
 	
 	table.insert(module, {
 		Type = "Toggle",
@@ -5960,9 +6041,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	})
 	
 	local instakillshoot = false
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Shoot murderer", function(Self)
+	local function shootMurderer()
 			if findSheriff() ~= localplayer then 
 				fu.notification("You're not sheriff/hero.") 
 				return 
@@ -6014,8 +6093,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	
 	
 			--localplayer.Character.Gun.KnifeLocal.CreateBeam.RemoteFunction:InvokeServer(unpack(args))
-		end,}
-	})
+	end
 	
 	local spawnAtPlayer = false
 	local loopThrow = false
@@ -6084,8 +6162,26 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	end)
 	table.insert(module, {
 		Type = "Button",
-		Args = {"Knife throw to closest (NEW)", function()
-			knifeThrow()
+		Args = {"SHOOT", function()
+			if not isRoundActive() then
+				fu.notification("You need to be in an active match to use SHOOT.")
+				return
+			end
+
+			local character = localplayer.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if not character or not humanoid or humanoid.Health <= 0 then
+				fu.notification("You need to be alive to use SHOOT.")
+				return
+			end
+
+			if findSheriff() == localplayer then
+				shootMurderer()
+			elseif findMurderer() == localplayer then
+				knifeThrow()
+			else
+				fu.notification("SHOOT is available when you're sheriff, hero, or murderer.")
+			end
 		end}
 	})
 	
@@ -6097,66 +6193,6 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 			loopThrow = tog
 		end}
 	})
-	
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Delayed shoot murderer", function(Self)
-			if findSheriff() ~= localplayer then 
-				fu.notification("You're not sheriff/hero.") 
-				return 
-			end
-	
-			local murderer = findMurderer() or findSheriffThatsNotMe()
-			if not murderer then
-				fu.notification("No murderer (or sheriff) to shoot.")
-				return
-			end
-	
-			if not localplayer.Character:FindFirstChild("Gun") then
-				local hum = localplayer.Character:FindFirstChild("Humanoid")
-				if localplayer.Backpack:FindFirstChild("Gun") then
-					hum:EquipTool(localplayer.Backpack:FindFirstChild("Gun"))
-				else
-					fu.notification("You don't have the gun..?")
-					return
-				end
-			end
-	
-			local murdererHRP = murderer.Character:FindFirstChild("HumanoidRootPart")
-			if not murdererHRP then
-				fu.notification("Could not find the murderer's HumanoidRootPart.")
-				return
-			end
-	
-			fu.notification("Waiting for murderer to be in view...")
-			rs.Stepped:Connect(function()
-				-- shoot a ray from player to murderer
-				local origin = localplayer.Character.HumanoidRootPart.Position
-				local direction = (Vector3.new(murdererHRP.Position.X, origin.Y, murdererHRP.Position.Z) - origin).unit * 1000
-				local params = RaycastParams.new()
-	
-				local raycastResult = workspace:Raycast(origin, direction, params)
-				if raycastResult then
-					if raycastResult.Instance == murdererHRP then
-						local predictedPosition = getPredictedPosition(murderer, shootOffset)
-	
-						local args = {
-							[1] = 1,
-							[2] = predictedPosition,
-							[3] = "AH2"
-						}
-	
-	
-						localplayer.Character.Gun.KnifeLocal.CreateBeam.RemoteFunction:InvokeServer(unpack(args))
-					end
-				end
-			end)
-	
-	
-		end,}
-	})
-	
 	-- table.insert(module, {
 	-- 	Type = "Toggle",
 	-- 	Args = {"Use AI Prediction Engine", function(Self, state)
@@ -6364,9 +6400,14 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 			end,
 	
 			Teleport_to_map = function(Self)
-				local spawnsFolder = getMap():FindFirstChild("Spawns")
+				local map = getMap()
+				local spawnsFolder = map and map:FindFirstChild("Spawns")
 				if spawnsFolder then
 					local spawns = spawnsFolder:GetChildren()
+					if #spawns == 0 then
+						fu.notification("No map spawn is available.")
+						return
+					end
 					local randomSpawn = spawns[math.random(1, #spawns)]
 					localplayer.Character:MoveTo(randomSpawn.Position)
 				else
@@ -6424,9 +6465,10 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	table.insert(module, {
 		Type = "Button",
 		Args = {"Teleport to dropped gun", function(Self)
-			if not getMap():FindFirstChild("GunDrop") then fu.notification("No dropped gun to be teleported to.") return end
+			local droppedGun = findDroppedGun()
+			if not droppedGun then fu.notification("No dropped gun to be teleported to.") return end
 			local previousPosition = localplayer.Character:GetPivot()
-			localplayer.Character:PivotTo(getMap():FindFirstChild("GunDrop"):GetPivot())
+			localplayer.Character:PivotTo(droppedGun:GetPivot())
 			localplayer.Backpack.ChildAdded:Wait()
 			localplayer.Character:PivotTo(previousPosition)
 		end,}
