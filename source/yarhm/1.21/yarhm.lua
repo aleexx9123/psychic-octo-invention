@@ -38,11 +38,11 @@ local function roundMapExists()
 end
 
 if not roundMapExists() then
-	notifyBeforeLoad("Cuando empiece la partida, Tiesas Scripts se cargará automáticamente.")
-	repeat task.wait(0.5) until roundMapExists()
+	notifyBeforeLoad("Cargando el menú. Las funciones de la ronda se activarán al empezar.")
+else
+	notifyBeforeLoad("Partida de " .. currentGameName .. " detectada. Cargando Tiesas Scripts...")
 end
 
-notifyBeforeLoad("Partida de " .. currentGameName .. " detectada. Cargando Tiesas Scripts...")
 -- Instances:
 
 local Converted = {
@@ -6511,22 +6511,21 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		fu.refreshlist()
 		fu.refresharea()
 
-		-- Modo compacto: al cargar la ronda no queda ningún panel abierto.
+		-- En móvil el menú debe quedar accesible desde el primer momento. Al
+		-- minimizarlo, el control TS integrado permite volver a abrirlo.
 		local gui = getgenv().TIESAS
-		gui.Menu.Visible = false
+		gui.Menu.Visible = true
 		gui.Open.Visible = false
 		gui.Dropdown.Visible = false
 		gui.Dialog.Visible = false
 
-		-- El único control permanente es SHOOT. Se puede arrastrar y,
-		-- manteniéndolo pulsado, abrir el ajuste para agrandarlo o achicarlo.
 		for _, child in ipairs(gui.FloatingButtons:GetChildren()) do
 			if child:IsA("TextButton") and child.Name ~= "SHOOT" then
 				child:Destroy()
 			end
 		end
 		fu.createFloatingButton(shootButtonItem, Instance.new("TextButton"), "SHOOT")
-		fu.notification("SHOOT listo: arrástralo para moverlo y mantenlo pulsado para cambiar su tamaño.")
+		fu.notification("Menú y SHOOT listos. Minimiza el menú para dejar visible el botón TS.")
 		return
 	end
 	
