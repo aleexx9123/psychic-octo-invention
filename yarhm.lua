@@ -9,11 +9,11 @@ pcall(function()
 end)
 if src == "" then
 	CoreGui:SetCore("SendNotification", {
-		Title = "YARHM Outage",
-		Text = "The latest YARHM build is currently unavailable. Using the mirror.",
+		Title = "Tiesas Scripts",
+		Text = "No se ha podido descargar el script. Comprueba tu conexión e inténtalo de nuevo.",
 		Duration = 5,
 	})
-	src = game:HttpGet("https://rawscripts.net/raw/Universal-Script-YARHM-12403", false)
+	return
 end
 
 loadstring(src)()
