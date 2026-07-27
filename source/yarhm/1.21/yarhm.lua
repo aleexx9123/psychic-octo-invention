@@ -1,7 +1,12 @@
--- Tiesas Scripts · Edición exclusiva para Murder Mystery 2
+-- Tiesas Scripts · Edición exclusiva para Murder Mystery 2 y MMV
 -- Creado por Tiesas Development
 
 local StarterGui = game:GetService("StarterGui")
+local supportedGames = {
+	[66654135] = "Murder Mystery 2",
+	[10413186812] = "MMV",
+}
+local currentGameName = supportedGames[game.GameId]
 
 local function notifyBeforeLoad(text)
 	pcall(function()
@@ -13,13 +18,13 @@ local function notifyBeforeLoad(text)
 	end)
 end
 
-if game.GameId ~= 66654135 then
-	notifyBeforeLoad("Tiesas Scripts solo funciona en Murder Mystery 2.")
+if not currentGameName then
+	notifyBeforeLoad("Tiesas Scripts solo funciona en Murder Mystery 2 y MMV.")
 	return
 end
 
 if not game:IsLoaded() then
-	notifyBeforeLoad("Esperando a que termine de cargar Murder Mystery 2...")
+	notifyBeforeLoad("Esperando a que termine de cargar " .. currentGameName .. "...")
 	game.Loaded:Wait()
 end
 
@@ -37,7 +42,7 @@ if not roundMapExists() then
 	repeat task.wait(0.5) until roundMapExists()
 end
 
-notifyBeforeLoad("Partida detectada. Cargando Tiesas Scripts...")
+notifyBeforeLoad("Partida de " .. currentGameName .. " detectada. Cargando Tiesas Scripts...")
 -- Instances:
 
 local Converted = {
@@ -811,7 +816,7 @@ Converted["_HubCredits"].Name = "HubCredits"
 Converted["_HubCredits"].Parent = Converted["_Menu"]
 
 Converted["_HubDesc"].Font = Enum.Font.GothamBold
-Converted["_HubDesc"].Text = "MM2 exclusivo · automático y configurable"
+Converted["_HubDesc"].Text = "MM2 + MMV · automático y configurable"
 Converted["_HubDesc"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_HubDesc"].TextSize = 14
 Converted["_HubDesc"].TextWrapped = true
@@ -981,7 +986,7 @@ Converted["_Area1"].Name = "Area"
 Converted["_Area1"].Parent = Converted["_Area"]
 
 Converted["_TextLabel6"].Font = Enum.Font.GothamBold
-Converted["_TextLabel6"].Text = "Murder Mystery 2"
+Converted["_TextLabel6"].Text = "MM2 + MMV"
 Converted["_TextLabel6"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_TextLabel6"].TextSize = 14
 Converted["_TextLabel6"].AnchorPoint = Vector2.new(0.5, 0.5)
@@ -5351,7 +5356,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 
 	local module = {}
-	module["gameId"] = 66654135
+	module["gameId"] = game.GameId
 	
 	local fu = require(getgenv().TIESAS.FUNCTIONS)
 	local espindc = require(script.Parent.ESPIndicator)
@@ -5571,7 +5576,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	
 	if not game.ReplicatedStorage:WaitForChild("Remotes", 5) then
-		fu.dialog("MM2 no detectado", "No se han encontrado los datos de Murder Mystery 2.", {"Cerrar"})
+		fu.dialog(currentGameName .. " no detectado", "No se han encontrado los datos necesarios de " .. currentGameName .. ".", {"Cerrar"})
 	
 		fu.waitfordialog()
 		fu.closedialog()
@@ -5661,7 +5666,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	-- I honestly don't know what went wrong so if any of you experts know why this stuff aint working make a pull request :praying_hands_emoji:
 	
 	
-	module["Name"] = "Murder Mystery 2"
+	module["Name"] = currentGameName
 	
 	-- Player ESP
 	workspace.ChildAdded:Connect(function(ch)
