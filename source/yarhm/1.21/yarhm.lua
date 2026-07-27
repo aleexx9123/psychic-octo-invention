@@ -5385,9 +5385,6 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local espcontainer = espindc.new({ArrowEdgePadding = 50, ArrowShowDistanceText = false,})
 	
 	local playerESP = false
-	-- Activa por defecto la corrección de los disparos normales de la pistola.
-	-- El hook está restringido a los remotes del arma y no afecta al cuchillo.
-	local sheriffAimbot = true
 	local coinAutoCollect = false
 	local autoShooting = false
 	local shootOffset = 2.8
@@ -5992,75 +5989,6 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return aimPosition + leadVelocity * leadTime
 	end
 
-	local silentAimHookInstalled = false
-	local function getSilentAimTarget()
-		return findMurderer()
-	end
-
-	local function installSilentAimHook()
-		if silentAimHookInstalled then return true end
-		if not hookmetamethod or not getnamecallmethod then return false end
-
-		local oldNamecall
-		local callback = function(self, ...)
-			local args = {...}
-			local method = getnamecallmethod()
-			local calledByUs = checkcaller and checkcaller()
-
-			-- Filtrar primero por método y por la pistola equipada. Evitamos buscar
-			-- roles en cada remote del juego, algo que sobrecarga Delta en iPhone.
-			if sheriffAimbot and not calledByUs
-				and (method == "FireServer" or method == "InvokeServer") then
-				local character = localplayer.Character
-				local gun = character and character:FindFirstChild("Gun")
-				-- No interceptar nunca remotes del cuchillo: el ataque cuerpo a
-				-- cuerpo, el lanzamiento y los poderes comparten ese Tool.
-				local isGunRemote = gun and self:IsDescendantOf(gun)
-					and (
-						(method == "InvokeServer"
-							and (self.Name == "RemoteFunction" or self.Name == "ShootGun"))
-						or (method == "FireServer" and self.Name == "Shoot")
-					)
-
-				if isGunRemote then
-					local targetPlayer = getSilentAimTarget()
-					if targetPlayer then
-						local predictedPosition = getPredictedPosition(
-							targetPlayer,
-							shootOffset
-						)
-
-						-- MM2 ha usado tanto 0/"AH" (Eclipse antiguo) como
-						-- 1/"AH2" (remote moderno). El destino es el argumento 2.
-						if method == "InvokeServer"
-							and (args[1] == 0 or args[1] == 1)
-							and typeof(args[2]) == "Vector3" then
-							args[2] = predictedPosition
-						elseif method == "FireServer" and typeof(args[2]) == "CFrame" then
-							args[2] = CFrame.new(predictedPosition)
-						end
-					end
-				end
-			end
-
-			return oldNamecall(self, unpack(args))
-		end
-
-		if newcclosure then
-			callback = newcclosure(callback)
-		end
-		oldNamecall = hookmetamethod(game, "__namecall", callback)
-		silentAimHookInstalled = oldNamecall ~= nil
-		return silentAimHookInstalled
-	end
-
-	if not installSilentAimHook() then
-		sheriffAimbot = false
-	end
-	
-	
-	
-	
 	task.spawn(function()
 		while task.wait(1) do
 			if findSheriff() == localplayer and autoShooting then
@@ -6261,28 +6189,6 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		Args = {"ACCIÓN CONTEXTUAL"}
 	})
 
-	table.insert(module, {
-		Type = "ButtonGrid",
-		Toggleable = true,
-		DefaultStates = sheriffAimbot and {"Puntería_asistida"} or nil,
-		Args = {1, {
-			["Puntería_asistida"] = function()
-				if sheriffAimbot then
-					sheriffAimbot = false
-					fu.notification("Puntería asistida desactivada.")
-					return
-				end
-
-				if installSilentAimHook() then
-					sheriffAimbot = true
-					fu.notification("Puntería asistida activada.")
-				else
-					fu.notification("Este executor no permite interceptar el disparo.")
-				end
-			end,
-		}}
-	})
-	
 	local instakillshoot = false
 	local function shootMurderer()
 			if findSheriff() ~= localplayer then 
