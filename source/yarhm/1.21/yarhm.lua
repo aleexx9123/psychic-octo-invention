@@ -1,17 +1,47 @@
--- Yet Another Random Hub Menu 1.21 by Aetherion
+-- Tiesas Scripts · Edición exclusiva para Murder Mystery 2
+-- Creado por Tiesas Development
+
+local StarterGui = game:GetService("StarterGui")
+
+local function notifyBeforeLoad(text)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = "Tiesas Scripts",
+			Text = text,
+			Duration = 7
+		})
+	end)
+end
+
+if game.GameId ~= 66654135 then
+	notifyBeforeLoad("Tiesas Scripts solo funciona en Murder Mystery 2.")
+	return
+end
 
 if not game:IsLoaded() then
-	game:GetService("StarterGui"):SetCore("SendNotification", {
-		Title = "Script loading",
-		Text = "Waiting for the game to finish loading!",
-		Duration = 5
-	})
+	notifyBeforeLoad("Esperando a que termine de cargar Murder Mystery 2...")
 	game.Loaded:Wait()
 end
+
+local function roundMapExists()
+	for _, object in ipairs(workspace:GetChildren()) do
+		if object:FindFirstChild("CoinContainer") and object:FindFirstChild("Spawns") then
+			return true
+		end
+	end
+	return false
+end
+
+if not roundMapExists() then
+	notifyBeforeLoad("Cuando empiece la partida, Tiesas Scripts se cargará automáticamente.")
+	repeat task.wait(0.5) until roundMapExists()
+end
+
+notifyBeforeLoad("Partida detectada. Cargando Tiesas Scripts...")
 -- Instances:
 
 local Converted = {
-	["_YARHM"] = Instance.new("ScreenGui");
+	["_TIESAS"] = Instance.new("ScreenGui");
 	["_FUNCTIONS"] = Instance.new("ModuleScript");
 	["_Flee the Facility"] = Instance.new("LocalScript");
 	["_Universal"] = Instance.new("LocalScript");
@@ -243,16 +273,16 @@ local Converted = {
 
 -- Properties:
 
-Converted["_YARHM"].DisplayOrder = 3
-Converted["_YARHM"].IgnoreGuiInset = true
-Converted["_YARHM"].ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets
-Converted["_YARHM"].ResetOnSpawn = false
-Converted["_YARHM"].ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-Converted["_YARHM"].Name = "YARHM"
-Converted["_YARHM"].Parent = game:GetService("CoreGui")
+Converted["_TIESAS"].DisplayOrder = 3
+Converted["_TIESAS"].IgnoreGuiInset = true
+Converted["_TIESAS"].ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets
+Converted["_TIESAS"].ResetOnSpawn = false
+Converted["_TIESAS"].ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+Converted["_TIESAS"].Name = "TiesasScripts"
+Converted["_TIESAS"].Parent = game:GetService("CoreGui")
 
 Converted["_Open"].Font = Enum.Font.Gotham
-Converted["_Open"].Text = "Triple-click this region to open YARHM."
+Converted["_Open"].Text = "Pulsa tres veces para abrir Tiesas Scripts."
 Converted["_Open"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_Open"].TextScaled = true
 Converted["_Open"].TextSize = 14
@@ -268,7 +298,7 @@ Converted["_Open"].Selectable = false
 Converted["_Open"].Size = UDim2.new(0, 493, 0, 50)
 Converted["_Open"].Visible = false
 Converted["_Open"].Name = "Open"
-Converted["_Open"].Parent = Converted["_YARHM"]
+Converted["_Open"].Parent = Converted["_TIESAS"]
 
 Converted["_UICorner"].Parent = Converted["_Open"]
 
@@ -285,7 +315,7 @@ Converted["_DropdownFrameSample"].BorderSizePixel = 0
 Converted["_DropdownFrameSample"].Size = UDim2.new(0, 108, 0, 239)
 Converted["_DropdownFrameSample"].Visible = false
 Converted["_DropdownFrameSample"].Name = "DropdownFrameSample"
-Converted["_DropdownFrameSample"].Parent = Converted["_YARHM"]
+Converted["_DropdownFrameSample"].Parent = Converted["_TIESAS"]
 
 Converted["_UICorner1"].Parent = Converted["_DropdownFrameSample"]
 
@@ -325,7 +355,7 @@ Converted["_UIListLayout"].SortOrder = Enum.SortOrder.LayoutOrder
 Converted["_UIListLayout"].Parent = Converted["_ScrollingFrame"]
 
 Converted["_Sample"].Font = Enum.Font.Unknown
-Converted["_Sample"].Text = "This can fit a lot of text, probably."
+Converted["_Sample"].Text = "Texto informativo"
 Converted["_Sample"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_Sample"].TextScaled = true
 Converted["_Sample"].TextSize = 14
@@ -357,7 +387,7 @@ Converted["_themedColor"].Name = "themedColor"
 Converted["_themedColor"].Parent = Converted["_DropdownFrameSample"]
 
 Converted["_ListButton"].Font = Enum.Font.Gotham
-Converted["_ListButton"].Text = "Placeholder"
+Converted["_ListButton"].Text = "Módulo"
 Converted["_ListButton"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_ListButton"].TextSize = 14
 Converted["_ListButton"].TextWrapped = true
@@ -369,7 +399,7 @@ Converted["_ListButton"].Position = UDim2.new(0.0450000018, 0, 0.112000003, 0)
 Converted["_ListButton"].Size = UDim2.new(1, 0, 0, 50)
 Converted["_ListButton"].Visible = false
 Converted["_ListButton"].Name = "ListButton"
-Converted["_ListButton"].Parent = Converted["_YARHM"]
+Converted["_ListButton"].Parent = Converted["_TIESAS"]
 
 Converted["_UICorner3"].Parent = Converted["_ListButton"]
 
@@ -381,7 +411,7 @@ Converted["_Notifications"].BorderSizePixel = 0
 Converted["_Notifications"].Position = UDim2.new(0.99000001, 0, 0.5, 0)
 Converted["_Notifications"].Size = UDim2.new(0, 242, 1, 0)
 Converted["_Notifications"].Name = "Notifications"
-Converted["_Notifications"].Parent = Converted["_YARHM"]
+Converted["_Notifications"].Parent = Converted["_TIESAS"]
 
 Converted["_UIListLayout1"].Padding = UDim.new(0, 10)
 Converted["_UIListLayout1"].HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -426,7 +456,7 @@ Converted["_TextBoxPlaceholder"].BorderSizePixel = 0
 Converted["_TextBoxPlaceholder"].Size = UDim2.new(1, 0, 0, 50)
 Converted["_TextBoxPlaceholder"].Visible = false
 Converted["_TextBoxPlaceholder"].Name = "TextBoxPlaceholder"
-Converted["_TextBoxPlaceholder"].Parent = Converted["_YARHM"]
+Converted["_TextBoxPlaceholder"].Parent = Converted["_TIESAS"]
 
 Converted["_UIListLayout2"].Padding = UDim.new(0, 5)
 Converted["_UIListLayout2"].FillDirection = Enum.FillDirection.Horizontal
@@ -454,7 +484,7 @@ Converted["_UIPadding4"].PaddingTop = UDim.new(0, 5)
 Converted["_UIPadding4"].Parent = Converted["_TextButton"]
 
 Converted["_TextBox"].Font = Enum.Font.Gotham
-Converted["_TextBox"].PlaceholderText = "Placeholder"
+Converted["_TextBox"].PlaceholderText = "Escribe aquí"
 Converted["_TextBox"].Text = ""
 Converted["_TextBox"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_TextBox"].TextSize = 14
@@ -468,7 +498,7 @@ Converted["_TextBox"].Parent = Converted["_TextBoxPlaceholder"]
 Converted["_UICorner6"].Parent = Converted["_TextBox"]
 
 Converted["_FloatingButton"].Font = Enum.Font.Unknown
-Converted["_FloatingButton"].Text = "Shoot into murderer"
+Converted["_FloatingButton"].Text = "ATACAR"
 Converted["_FloatingButton"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_FloatingButton"].TextScaled = true
 Converted["_FloatingButton"].TextSize = 14
@@ -483,7 +513,7 @@ Converted["_FloatingButton"].Position = UDim2.new(0, 125, 0, 40)
 Converted["_FloatingButton"].Size = UDim2.new(0, 50, 0, 100)
 Converted["_FloatingButton"].Visible = false
 Converted["_FloatingButton"].Name = "FloatingButton"
-Converted["_FloatingButton"].Parent = Converted["_YARHM"]
+Converted["_FloatingButton"].Parent = Converted["_TIESAS"]
 
 Converted["_UIPadding5"].PaddingBottom = UDim.new(0, 5)
 Converted["_UIPadding5"].PaddingLeft = UDim.new(0, 5)
@@ -538,10 +568,10 @@ Converted["_Dropdown"].BorderSizePixel = 0
 Converted["_Dropdown"].Size = UDim2.new(1, 0, 0, 35)
 Converted["_Dropdown"].Visible = false
 Converted["_Dropdown"].Name = "Dropdown"
-Converted["_Dropdown"].Parent = Converted["_YARHM"]
+Converted["_Dropdown"].Parent = Converted["_TIESAS"]
 
 Converted["_TextLabel1"].Font = Enum.Font.Unknown
-Converted["_TextLabel1"].Text = "Loop walkspeed and FOV"
+Converted["_TextLabel1"].Text = "Mantener velocidad y campo de visión"
 Converted["_TextLabel1"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_TextLabel1"].TextScaled = true
 Converted["_TextLabel1"].TextSize = 14
@@ -565,7 +595,7 @@ Converted["_UIPadding6"].PaddingRight = UDim.new(0.0700000003, 0)
 Converted["_UIPadding6"].Parent = Converted["_Dropdown"]
 
 Converted["_Frame"].Font = Enum.Font.Gotham
-Converted["_Frame"].Text = "Select..."
+Converted["_Frame"].Text = "Seleccionar..."
 Converted["_Frame"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_Frame"].TextScaled = true
 Converted["_Frame"].TextWrapped = true
@@ -596,7 +626,7 @@ Converted["_AddCustomModule"].Position = UDim2.new(0.5, 0, -0.5, 0)
 Converted["_AddCustomModule"].Size = UDim2.new(0, 440, 0, 268)
 Converted["_AddCustomModule"].ZIndex = 3
 Converted["_AddCustomModule"].Name = "AddCustomModule"
-Converted["_AddCustomModule"].Parent = Converted["_YARHM"]
+Converted["_AddCustomModule"].Parent = Converted["_TIESAS"]
 
 Converted["_UICorner10"].Parent = Converted["_AddCustomModule"]
 
@@ -624,7 +654,7 @@ Converted["_UIGradient3"].Parent = Converted["_AddCustomModule"]
 Converted["_UIScale2"].Parent = Converted["_AddCustomModule"]
 
 Converted["_TextLabel2"].Font = Enum.Font.Gotham
-Converted["_TextLabel2"].Text = "Add a module"
+Converted["_TextLabel2"].Text = "Añadir un módulo"
 Converted["_TextLabel2"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_TextLabel2"].TextScaled = true
 Converted["_TextLabel2"].TextSize = 14
@@ -640,7 +670,7 @@ Converted["_TextLabel2"].Parent = Converted["_AddCustomModule"]
 
 Converted["_TextBox1"].ClearTextOnFocus = false
 Converted["_TextBox1"].Font = Enum.Font.Gotham
-Converted["_TextBox1"].PlaceholderText = "Custom module link"
+Converted["_TextBox1"].PlaceholderText = "Enlace del módulo"
 Converted["_TextBox1"].Text = ""
 Converted["_TextBox1"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_TextBox1"].TextScaled = true
@@ -663,7 +693,7 @@ Converted["_UIPadding8"].PaddingTop = UDim.new(0, 10)
 Converted["_UIPadding8"].Parent = Converted["_TextBox1"]
 
 Converted["_TextLabel3"].Font = Enum.Font.GothamBold
-Converted["_TextLabel3"].Text = "ONLY ADD MODULES YOU TRUST!"
+Converted["_TextLabel3"].Text = "AÑADE SOLO MÓDULOS DE CONFIANZA"
 Converted["_TextLabel3"].TextColor3 = Color3.fromRGB(255, 0, 0)
 Converted["_TextLabel3"].TextScaled = true
 Converted["_TextLabel3"].TextSize = 14
@@ -678,7 +708,7 @@ Converted["_TextLabel3"].Size = UDim2.new(0.619047642, 0, 0.0550245307, 0)
 Converted["_TextLabel3"].Parent = Converted["_AddCustomModule"]
 
 Converted["_Add"].Font = Enum.Font.Gotham
-Converted["_Add"].Text = "Add"
+Converted["_Add"].Text = "Añadir"
 Converted["_Add"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_Add"].TextScaled = true
 Converted["_Add"].TextSize = 14
@@ -705,7 +735,7 @@ Converted["_UIStroke3"].Color = Color3.fromRGB(255, 255, 255)
 Converted["_UIStroke3"].Parent = Converted["_Add"]
 
 Converted["_Cancel"].Font = Enum.Font.Gotham
-Converted["_Cancel"].Text = "Cancel"
+Converted["_Cancel"].Text = "Cancelar"
 Converted["_Cancel"].TextColor3 = Color3.fromRGB(255, 0, 0)
 Converted["_Cancel"].TextScaled = true
 Converted["_Cancel"].TextSize = 14
@@ -742,7 +772,7 @@ Converted["_Menu"].BorderSizePixel = 0
 Converted["_Menu"].Position = UDim2.new(0.5, 0, 0.0500000007, 0)
 Converted["_Menu"].Size = UDim2.new(0, 441, 0, 268)
 Converted["_Menu"].Name = "Menu"
-Converted["_Menu"].Parent = Converted["_YARHM"]
+Converted["_Menu"].Parent = Converted["_TIESAS"]
 
 Converted["_UICorner14"].CornerRadius = UDim.new(0, 16)
 Converted["_UICorner14"].Parent = Converted["_Menu"]
@@ -762,7 +792,7 @@ Converted["_UIGradient4"].Rotation = 180
 Converted["_UIGradient4"].Parent = Converted["_UIStroke5"]
 
 Converted["_HubCredits"].Font = Enum.Font.GothamBold
-Converted["_HubCredits"].Text = "made and open sourced by imperial"
+Converted["_HubCredits"].Text = "Tiesas Development"
 Converted["_HubCredits"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_HubCredits"].TextScaled = true
 Converted["_HubCredits"].TextSize = 14
@@ -776,12 +806,12 @@ Converted["_HubCredits"].BorderColor3 = Color3.fromRGB(0, 0, 0)
 Converted["_HubCredits"].BorderSizePixel = 0
 Converted["_HubCredits"].Position = UDim2.new(0.785926819, 0, 0.160157606, 0)
 Converted["_HubCredits"].Size = UDim2.new(0.316320807, 0, 0.0585099049, 0)
-Converted["_HubCredits"].Visible = false
+Converted["_HubCredits"].Visible = true
 Converted["_HubCredits"].Name = "HubCredits"
 Converted["_HubCredits"].Parent = Converted["_Menu"]
 
 Converted["_HubDesc"].Font = Enum.Font.GothamBold
-Converted["_HubDesc"].Text = "yet another random hub menu"
+Converted["_HubDesc"].Text = "MM2 exclusivo · automático y configurable"
 Converted["_HubDesc"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_HubDesc"].TextSize = 14
 Converted["_HubDesc"].TextWrapped = true
@@ -798,7 +828,7 @@ Converted["_HubDesc"].Parent = Converted["_Menu"]
 
 Converted["_HubName"].Font = Enum.Font.GothamBold
 Converted["_HubName"].RichText = true
-Converted["_HubName"].Text = "YARHM "
+Converted["_HubName"].Text = "Tiesas Scripts "
 Converted["_HubName"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_HubName"].TextScaled = true
 Converted["_HubName"].TextSize = 14
@@ -829,7 +859,7 @@ Converted["_CanvasGroup"].Parent = Converted["_Menu"]
 Converted["_UICorner15"].CornerRadius = UDim.new(0, 16)
 Converted["_UICorner15"].Parent = Converted["_CanvasGroup"]
 
-Converted["_ImageLabel"].Image = "rbxassetid://17864987433"
+Converted["_ImageLabel"].Image = ""
 -- Converted["_ImageLabel"].ImageContent = Content{SourceType=Uri, Uri=rbxassetid://17864987433}
 Converted["_ImageLabel"].AnchorPoint = Vector2.new(0.5, 0.5)
 Converted["_ImageLabel"].BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -854,8 +884,8 @@ Converted["_Opener"].Name = "Opener"
 Converted["_Opener"].Parent = Converted["_CanvasGroup"]
 
 Converted["_TextLabel4"].Font = Enum.Font.GothamBold
-Converted["_TextLabel4"].Text = "Yet Another Random Hub Menu"
-Converted["_TextLabel4"].TextColor3 = Color3.fromRGB(255, 69.00000348687172, 67.00000360608101)
+Converted["_TextLabel4"].Text = "TS"
+Converted["_TextLabel4"].TextColor3 = Color3.fromRGB(109, 91, 144)
 Converted["_TextLabel4"].TextScaled = true
 Converted["_TextLabel4"].TextSize = 14
 Converted["_TextLabel4"].TextWrapped = true
@@ -896,7 +926,7 @@ Converted["_themedColor2"].Name = "themedColor"
 Converted["_themedColor2"].Parent = Converted["_Frame1"]
 
 Converted["_TextLabel5"].Font = Enum.Font.Gotham
-Converted["_TextLabel5"].Text = "Tap here to minimize."
+Converted["_TextLabel5"].Text = "Pulsa aquí para minimizar."
 Converted["_TextLabel5"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_TextLabel5"].TextSize = 15
 Converted["_TextLabel5"].TextWrapped = true
@@ -951,7 +981,7 @@ Converted["_Area1"].Name = "Area"
 Converted["_Area1"].Parent = Converted["_Area"]
 
 Converted["_TextLabel6"].Font = Enum.Font.GothamBold
-Converted["_TextLabel6"].Text = "3 years of keyless! ðŸŽ‰"
+Converted["_TextLabel6"].Text = "Murder Mystery 2"
 Converted["_TextLabel6"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_TextLabel6"].TextSize = 14
 Converted["_TextLabel6"].AnchorPoint = Vector2.new(0.5, 0.5)
@@ -964,7 +994,7 @@ Converted["_TextLabel6"].Size = UDim2.new(0, 200, 0, 50)
 Converted["_TextLabel6"].Parent = Converted["_Area1"]
 
 Converted["_TextLabel7"].Font = Enum.Font.GothamBold
-Converted["_TextLabel7"].Text = "YARHM"
+Converted["_TextLabel7"].Text = "Tiesas Scripts"
 Converted["_TextLabel7"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_TextLabel7"].TextScaled = true
 Converted["_TextLabel7"].TextSize = 14
@@ -1105,10 +1135,10 @@ Converted["_Toggle"].BorderSizePixel = 0
 Converted["_Toggle"].Size = UDim2.new(1, 0, 0, 35)
 Converted["_Toggle"].Visible = false
 Converted["_Toggle"].Name = "Toggle"
-Converted["_Toggle"].Parent = Converted["_YARHM"]
+Converted["_Toggle"].Parent = Converted["_TIESAS"]
 
 Converted["_TextLabel8"].Font = Enum.Font.Unknown
-Converted["_TextLabel8"].Text = "Loop walkspeed and FOV"
+Converted["_TextLabel8"].Text = "Mantener velocidad y campo de visión"
 Converted["_TextLabel8"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_TextLabel8"].TextScaled = true
 Converted["_TextLabel8"].TextSize = 14
@@ -1178,7 +1208,7 @@ Converted["_UIPadding14"].PaddingRight = UDim.new(0.0700000003, 0)
 Converted["_UIPadding14"].Parent = Converted["_Toggle"]
 
 Converted["_Modules"].Name = "Modules"
-Converted["_Modules"].Parent = Converted["_YARHM"]
+Converted["_Modules"].Parent = Converted["_TIESAS"]
 
 Converted["_NotificationSample"].AnchorPoint = Vector2.new(0.5, 0)
 Converted["_NotificationSample"].BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -1190,7 +1220,7 @@ Converted["_NotificationSample"].Size = UDim2.new(0, 400, 0, 50)
 Converted["_NotificationSample"].Visible = false
 Converted["_NotificationSample"].ZIndex = 5
 Converted["_NotificationSample"].Name = "NotificationSample"
-Converted["_NotificationSample"].Parent = Converted["_YARHM"]
+Converted["_NotificationSample"].Parent = Converted["_TIESAS"]
 
 Converted["_UICorner23"].CornerRadius = UDim.new(0, 10)
 Converted["_UICorner23"].Parent = Converted["_NotificationSample"]
@@ -1271,7 +1301,7 @@ Converted["_Dialog"].Size = UDim2.new(0, 313, 0, 147)
 Converted["_Dialog"].Visible = false
 Converted["_Dialog"].ZIndex = 5
 Converted["_Dialog"].Name = "Dialog"
-Converted["_Dialog"].Parent = Converted["_YARHM"]
+Converted["_Dialog"].Parent = Converted["_TIESAS"]
 
 Converted["_UICorner25"].Parent = Converted["_Dialog"]
 
@@ -1355,7 +1385,7 @@ Converted["_UIListLayout7"].Parent = Converted["_Options"]
 
 Converted["_OptionPlaceholder"].Font = Enum.Font.GothamBold
 Converted["_OptionPlaceholder"].RichText = true
-Converted["_OptionPlaceholder"].Text = "aaaaaaaaaaa"
+Converted["_OptionPlaceholder"].Text = "Opción"
 Converted["_OptionPlaceholder"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_OptionPlaceholder"].TextScaled = true
 Converted["_OptionPlaceholder"].TextSize = 100
@@ -1409,10 +1439,10 @@ Converted["_Range"].BorderSizePixel = 0
 Converted["_Range"].Size = UDim2.new(1, 0, 0, 35)
 Converted["_Range"].Visible = false
 Converted["_Range"].Name = "Range"
-Converted["_Range"].Parent = Converted["_YARHM"]
+Converted["_Range"].Parent = Converted["_TIESAS"]
 
 Converted["_TextLabel10"].Font = Enum.Font.Unknown
-Converted["_TextLabel10"].Text = "something something idk lol"
+Converted["_TextLabel10"].Text = "Ajuste configurable"
 Converted["_TextLabel10"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_TextLabel10"].TextScaled = true
 Converted["_TextLabel10"].TextSize = 58
@@ -1544,7 +1574,7 @@ Converted["_FloatingButtonSetting"].Size = UDim2.new(1, 0, 1, 0)
 Converted["_FloatingButtonSetting"].Visible = false
 Converted["_FloatingButtonSetting"].ZIndex = 10
 Converted["_FloatingButtonSetting"].Name = "FloatingButtonSetting"
-Converted["_FloatingButtonSetting"].Parent = Converted["_YARHM"]
+Converted["_FloatingButtonSetting"].Parent = Converted["_TIESAS"]
 
 Converted["_ControlBarContainer"].AnchorPoint = Vector2.new(0.5, 1)
 Converted["_ControlBarContainer"].BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -1573,7 +1603,7 @@ Converted["_UIListLayout9"].SortOrder = Enum.SortOrder.LayoutOrder
 Converted["_UIListLayout9"].Parent = Converted["_ControlBar"]
 
 Converted["_Visibility"].Font = Enum.Font.Gotham
-Converted["_Visibility"].Text = "Toggle visibility"
+Converted["_Visibility"].Text = "Mostrar u ocultar"
 Converted["_Visibility"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_Visibility"].TextScaled = true
 Converted["_Visibility"].TextSize = 14
@@ -1601,7 +1631,7 @@ Converted["_themedColor14"].Name = "themedColor"
 Converted["_themedColor14"].Parent = Converted["_Visibility"]
 
 Converted["_Lock1"].Font = Enum.Font.Gotham
-Converted["_Lock1"].Text = "Toggle lock"
+Converted["_Lock1"].Text = "Bloquear tamaño"
 Converted["_Lock1"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_Lock1"].TextScaled = true
 Converted["_Lock1"].TextSize = 14
@@ -1662,7 +1692,7 @@ Converted["_UIListLayout10"].SortOrder = Enum.SortOrder.LayoutOrder
 Converted["_UIListLayout10"].Parent = Converted["_ControlBarContainer"]
 
 Converted["_Tip"].Font = Enum.Font.GothamBold
-Converted["_Tip"].Text = "Drag the button around to resize!"
+Converted["_Tip"].Text = "Arrastra el botón para cambiar el tamaño."
 Converted["_Tip"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Converted["_Tip"].TextScaled = true
 Converted["_Tip"].TextSize = 14
@@ -1699,16 +1729,16 @@ Converted["_FloatingButtons1"].Position = UDim2.new(0.5, 0, 0.5, 0)
 Converted["_FloatingButtons1"].Size = UDim2.new(1, 0, 1, 0)
 Converted["_FloatingButtons1"].ZIndex = 3
 Converted["_FloatingButtons1"].Name = "FloatingButtons"
-Converted["_FloatingButtons1"].Parent = Converted["_YARHM"]
+Converted["_FloatingButtons1"].Parent = Converted["_TIESAS"]
 
 -- Routine Module Scripts:
 
 local routine_module_scripts = {}
 
-do -- Routine Module: StarterGui.YARHM.FUNCTIONS
+do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
     local script = Instance.new("ModuleScript")
     script.Name = "FUNCTIONS"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local function module_script()
 
 		local FUNCTIONSmodule = {}
@@ -1735,7 +1765,7 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 		local PointSave = PointSavef()
 		function SBTf()
 			-- Spring-based tweening module
-			-- Implementation by YARHM Team, respective credits towards the original creators for spring physics
+			-- Implementation by TIESAS Team, respective credits towards the original creators for spring physics
 		
 			local a=function()local a=function()local a={}local function b(c,d,e,f,g,h)local i=d*d-4*e/c;local j=-0.5;local k=d+math.sqrt(i)local l=d-math.sqrt(i)local m,n=j*k,j*l;local o,p=(n*f-g)/(n-m),(m*f-g)/(m-n)local q=h/e;return{Offset=function(r)return o*math.exp(m*r)+p*math.exp(n*r)+q end,Velocity=function(r)return o*m*math.exp(m*r)+p*n*math.exp(n*r)end,Acceleration=function(r)return o*m*m*math.exp(m*r)+p*n*n*math.exp(n*r)end}end;local function s(c,d,e,f,g,h)local i=-d/2;local j,k=f,g-i*f;local l=h/e;return{Offset=function(m)return math.exp(i*m)*(j+k*m)+l end,Velocity=function(m)return math.exp(i*m)*(k*i*m+j*i+k)end,Acceleration=function(m)return i*math.exp(i*m)*(k*i*m+j*i+2*k)end}end;local function t(c,d,e,f,g,h)local i=d*d-4*e/c;local j=-d/2;local k=math.sqrt(-i)local l,m=f,(g-j*f)/k;local n=h/e;return{Offset=function(o)return math.exp(j*o)*(l*math.cos(k*o)+m*math.sin(k*o))+n end,Velocity=function(o)return-math.exp(j*o)*((l*k-m*j)*math.sin(k*o)+(-m*k-l*j)*math.cos(k*o))end,Acceleration=function(o)return-math.exp(j*o)*((m*k*k+2*l*j*k-m*j*j)*math.sin(k*o)+(l*k*k-2*m*j*k-l*j*j)*math.cos(k*o))end}end;function a.F(c)local d,e,f=c.InitialOffset,c.InitialVelocity,c.ExternalForce;local g,h,i=c.Mass,c.Damping,c.Constant;local j=h*h-4*i/g;if j>0 then return b(g,h,i,d,e,f)elseif j==0 then return s(g,h,i,d,e,f)else return t(g,h,i,d,e,f)end end;return a end;local c=a()local d=math.sqrt;local e=math.pi;local f={OFFSET="Offset",VELOCITY="Velocity",ACCELERATION="Acceleration",GOAL="Goal",FREQUENCY="Frequency"}local g=""local h=""local i={}local j={}j.__index=function(k,l)local m={[f.OFFSET]=function()local m=tick()-k.StartTick;local n=k.F;local o=n.Offset(m)return o end,[f.VELOCITY]=function()local m=tick()-k.StartTick;local n=k.F;local o=n.Velocity(m)return o end,[f.ACCELERATION]=function()local m=tick()-k.StartTick;local n=k.F;local o=n.Acceleration(m)return o end,[f.GOAL]=function()local m=k.ExternalForce;local n=k.Constant;return m/n end,[f.FREQUENCY]=function()local m=k.Damping;local n=k.Constant;local o=k.Mass;return d(-m*m+4*n/o)/(2*e)end}local n=rawget(k,l)if n~=nil then return n end;local o=m[l]if o~=nil then return o()end;return j[l]end;j.__tostring=function(k)local l=tick()-k.StartTick;local m=k.F;local n=k.AdvancedObjectStringEnabled;local o;if not n then o=string.format(g,m.Offset(l),m.Velocity(l),m.Acceleration(l))else o=string.format(h,k.Mass,k.Damping,k.Constant,k.Goal,k.Frequency,k.InitialOffset,k.InitialVelocity,k.ExternalForce,k.StartTick,m.Offset(l),m.Velocity(l),m.Acceleration(l))end;return o end;function i.fromDurationAndBounce(k,l)local m=1;local n=(2*math.pi/k)^2*m;local o=2*l*math.sqrt(m*n)return{m,o,n}end;function i.new(k,l,m,n,o,p)assert(k>0,"Mass for spring system cannot be less than or equal to 0")assert(m>0,"Spring constant for spring system cannot be less than or equal to 0")n=n or 0;o=o or 0;p=p or 0;local q=p*m;local r={Mass=k,Damping=l,Constant=m,InitialOffset=n-p,InitialVelocity=o,ExternalForce=q,AdvancedObjectStringEnabled=false,StartTick=0}setmetatable(r,j)r:Reset()return r end;function i.fromFrequency(k,l,m,n,o,p)assert(k>0,"Mass for spring system cannot be less than or equal to 0")assert(m>0,"Spring frequency for spring system cannot be less than or equal to 0")local q=0.25*k*(4*e*e*m*m+l*l)n=n or 0;o=o or 0;p=p or 0;local r=p*q;local u={Mass=k,Damping=l,Constant=q,InitialOffset=n-p,InitialVelocity=o,ExternalForce=r,AdvancedObjectStringEnabled=false,StartTick=0}setmetatable(u,j)u:Reset()return u end;function j.Reset(k)k.F=c.F(k)k.StartTick=tick()end;function j.SetExternalForce(k,l)k.ExternalForce=l;k.InitialOffset=k.Offset-l/k.Constant;k.InitialVelocity=k.Velocity;k:Reset()end;function j.SetGoal(k,l)k.ExternalForce=l*k.Constant;k.InitialOffset=k.Offset-l;k.InitialVelocity=k.Velocity;k:Reset()end;function j.SetFrequency(k,l)k.Constant=0.25*k.Mass*(4*e*e*l*l+k.Damping*k.Damping)k.InitialOffset=k.Offset;k.InitialVelocity=k.Velocity;k:Reset()end;function j.SnapToCriticalDamping(k)k.Damping=2*d(k.Constant/k.Mass)k.InitialOffset=k.Offset;k.InitialVelocity=k.Velocity;k:Reset()end;function j.SetOffset(k,l,m)k.InitialOffset=l-k.Goal;k.InitialVelocity=m and 0 or k.Velocity;k:Reset()end;function j.AddOffset(k,l)k.InitialOffset=k.Offset+l;k.InitialVelocity=k.Velocity;k:Reset()end;function j.SetVelocity(k,l)k.InitialOffset=k.Offset;k.InitialVelocity=l;k:Reset()end;function j.AddVelocity(k,l)k.InitialOffset=k.Offset;k.InitialVelocity=k.Velocity+l;k:Reset()end;function j.Print(k)local l=tostring(k)print(l)end;return i end;local c=a()local d=game:GetService"RunService"local e={}e.__index=e;function e.fromDurationAndBounce(f,g)local h=1;local i=(2*math.pi/f)^2*h;local j=2*(1-g)*math.sqrt(h*i)return{h,j,i}end;local f={number=function(f,g,h,i,j)local k=c.new(h,i,j,f[g],0,f[g])return{springType="number",springSet={k},updateFunc=function()f[g]=k.Offset end,setGoal=function(l)k:SetGoal(l)end}end,UDim2=function(f,g,h,i,j)local k=c.new(h,i,j,f[g].X.Offset,0,f[g].X.Offset)local l=c.new(h,i,j,f[g].X.Scale,0,f[g].X.Scale)local m=c.new(h,i,j,f[g].Y.Offset,0,f[g].Y.Offset)local n=c.new(h,i,j,f[g].Y.Scale,0,f[g].Y.Scale)return{springType="UDim2",springSet={XOffset=k,XScale=l,YOffset=m,YScale=n},updateFunc=function()f[g]=UDim2.new(l.Offset,k.Offset,n.Offset,m.Offset)end,setGoal=function(o)k:SetGoal(o.X.Offset)l:SetGoal(o.X.Scale)m:SetGoal(o.Y.Offset)n:SetGoal(o.Y.Scale)end}end,Vector2=function(f,g,h,i,j)local k=c.new(h,i,j,f[g].X,0,f[g].X)local l=c.new(h,i,j,f[g].Y,0,f[g].Y)return{springType="Vector2",springSet={X=k,Y=l},updateFunc=function()f[g]=Vector2.new(k.Offset,l.Offset)end,setGoal=function(m)k:SetGoal(m.X)l:SetGoal(m.Y)end}end,Vector3=function(f,g,h,i,j)local k=c.new(h,i,j,f[g].X,0,f[g].X)local l=c.new(h,i,j,f[g].Y,0,f[g].Y)local m=c.new(h,i,j,f[g].Z,0,f[g].Z)return{springType="Vector3",springSet={k,l,m},updateFunc=function()f[g]=Vector3.new(k.Offset,l.Offset,m.Offset)end,setGoal=function(n)k:SetTarget(n.X)l:SetTarget(n.Y)m:SetTarget(n.Z)end}end}function e.new(g,h,i,j,k)assert(g[h],"Property does not exist on object")local l=typeof(g[h])local m=f[l]if m then local n=setmetatable({},e)n.obj=g;n.propertyName=h;n.updater=nil;local o=m(g,h,i,j,k)n.springType=o.springType;n.springSet=o.springSet;n.updateFunc=o.updateFunc;n.setGoal=o.setGoal;return n else error("Type not supported: "..l)end end;function e.Start(g)if g.updater then return end;for h,i in pairs(g.springSet)do i:Reset()end;g.updater=d.RenderStepped:Connect(function(h)g.updateFunc()end)end;function e.Stop(g)if g.updater then g.updater:Disconnect()g.updater=nil end end;function e.SetGoal(g,h)g.setGoal(h)end;function e.SetParameters(g,h,i,j)for k,l in pairs(g.springSet)do l.Mass=h;l.Stiffness=i;l.Damping=j;l:Reset()end end;return e
 		end
@@ -1743,11 +1773,14 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 		
 		
 		
-		local YARHMPointSave = PointSave.new("YARHM")
+		local TIESASPointSave = PointSave.new("TIESAS")
 		
 		local States = {}
 		local toggleStates = {}
 		local rangeValueStates = {}
+		getgenv().TIESAS_BUTTON_HEIGHT = getgenv().TIESAS_BUTTON_HEIGHT or 34
+		getgenv().TIESAS_MENU_SCALE = getgenv().TIESAS_MENU_SCALE or 1
+		getgenv().TIESAS_MENU_BUTTON_SIZE = getgenv().TIESAS_MENU_BUTTON_SIZE or 60
 		local AREA = script.Parent.Menu.Area.Area
 		local AREACONTAINER = script.Parent.Menu.Area
 		
@@ -1796,18 +1829,18 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 				ColorSequenceKeypoint.new(1, Color3.fromRGB(194, 231, 218))
 			},
 		}
-		if getgenv then getgenv().YARHM_THEME = FUNCTIONSmodule.theme end
+		if getgenv then getgenv().TIESAS_THEME = FUNCTIONSmodule.theme end
 		
 		function FUNCTIONSmodule.getTheme()
 			if getgenv then
-				return getgenv().YARHM_THEME or FUNCTIONSmodule.theme
+				return getgenv().TIESAS_THEME or FUNCTIONSmodule.theme
 			else
 				return FUNCTIONSmodule.theme
 			end
 		end
 		function FUNCTIONSmodule.setTheme(t)
 			FUNCTIONSmodule.theme = t
-			if getgenv then getgenv().YARHM_THEME = t end
+			if getgenv then getgenv().TIESAS_THEME = t end
 		end
 		
 		local floatingButtonObjects = {}
@@ -1998,7 +2031,7 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 					Size = newSize
 				}):Play()
 				button.Size = newSize
-				YARHMPointSave:set(string.gsub(button.Name, "_", ""), udim2Serializer(button.Position) .. "|" .. udim2Serializer(button.Size) .. "|" .. tostring(button.Visible) .. "|" .. tostring(dragger.CanBeDragged))
+				TIESASPointSave:set(string.gsub(button.Name, "_", ""), udim2Serializer(button.Position) .. "|" .. udim2Serializer(button.Size) .. "|" .. tostring(button.Visible) .. "|" .. tostring(dragger.CanBeDragged))
 			end
 			fBSFResizeDragger:Enable()
 		
@@ -2044,7 +2077,7 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 					Scale = 0
 				}):Play()
 			end
-			YARHMPointSave:set(string.gsub(getgenv().fBSFRealButton.Name, "_", ""), udim2Serializer(getgenv().fBSFRealButton.Position) .. "|" .. udim2Serializer(getgenv().fBSFRealButton.Size) .. "|" .. tostring(getgenv().fBSFRealButton.Visible) .. "|" .. tostring(getgenv().fBSF_ButtonDragger.CanBeDragged))
+			TIESASPointSave:set(string.gsub(getgenv().fBSFRealButton.Name, "_", ""), udim2Serializer(getgenv().fBSFRealButton.Position) .. "|" .. udim2Serializer(getgenv().fBSFRealButton.Size) .. "|" .. tostring(getgenv().fBSFRealButton.Visible) .. "|" .. tostring(getgenv().fBSF_ButtonDragger.CanBeDragged))
 		end
 		
 		function FUNCTIONSmodule.ftToggleVisibility()
@@ -2075,20 +2108,20 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 					Transparency = 0
 				}):Play()
 			end
-			YARHMPointSave:set(string.gsub(getgenv().fBSFRealButton.Name, "_", ""), udim2Serializer(getgenv().fBSFRealButton.Position) .. "|" .. udim2Serializer(getgenv().fBSFRealButton.Size) .. "|" .. tostring(getgenv().fBSFRealButton.Visible) .. "|" .. tostring(getgenv().fBSF_ButtonDragger.CanBeDragged))
+			TIESASPointSave:set(string.gsub(getgenv().fBSFRealButton.Name, "_", ""), udim2Serializer(getgenv().fBSFRealButton.Position) .. "|" .. udim2Serializer(getgenv().fBSFRealButton.Size) .. "|" .. tostring(getgenv().fBSFRealButton.Visible) .. "|" .. tostring(getgenv().fBSF_ButtonDragger.CanBeDragged))
 		end
 		
 		function FUNCTIONSmodule.createFloatingButton(item,button,buttonname,fromload)
-			if not getgenv().YARHM.FloatingButtons:FindFirstChild(string.gsub(buttonname, "_", "")) then
+			if not getgenv().TIESAS.FloatingButtons:FindFirstChild(string.gsub(buttonname, "_", "")) then
 				
 				
 				local UserInputService = game:GetService("UserInputService")
 				if not fromload then
-					YARHMPointSave:set(string.gsub(buttonname, "_", ""), udim2Serializer(UDim2.fromOffset(125, 90)) .. "|" .. udim2Serializer(UDim2.fromOffset(200,50)) .. "|true|true")
+					TIESASPointSave:set(string.gsub(buttonname, "_", ""), udim2Serializer(UDim2.fromOffset(125, 90)) .. "|" .. udim2Serializer(UDim2.fromOffset(200,50)) .. "|true|true")
 				end
 		
-				local newFloatingButton = getgenv().YARHM.FloatingButton:Clone()
-				newFloatingButton.Parent = getgenv().YARHM.FloatingButtons
+				local newFloatingButton = getgenv().TIESAS.FloatingButton:Clone()
+				newFloatingButton.Parent = getgenv().TIESAS.FloatingButtons
 				
 				newFloatingButton.Name = string.gsub(buttonname, "_", "")
 				newFloatingButton.Text = string.gsub(buttonname, "_", " ")
@@ -2161,8 +2194,8 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 				local shouldBeDraggable = true
 				if not fromload then
 					newFloatingButton.Position = UDim2.fromOffset(-125, 90)
-				elseif YARHMPointSave:get(string.gsub(buttonname, "_", "")) then
-					local data = YARHMPointSave:get(string.gsub(buttonname, "_", "")):split("|")
+				elseif TIESASPointSave:get(string.gsub(buttonname, "_", "")) then
+					local data = TIESASPointSave:get(string.gsub(buttonname, "_", "")):split("|")
 					newFloatingButton.Position = udim2Serializer(data[1])
 					ts:Create(newFloatingButton, TweenInfo.new(2, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {
 						Size = udim2Serializer(data[2])
@@ -2190,7 +2223,7 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 					floatingButtonDraggers[string.gsub(buttonname, "_", "")]:Enable()
 				end
 				floatingButtonDraggers[string.gsub(buttonname, "_", "")].Dragged = function(newPos)
-					YARHMPointSave:set(string.gsub(buttonname, "_", ""), udim2Serializer(newPos) .. "|" .. udim2Serializer(newFloatingButton.Size) .. "|" .. tostring(newFloatingButton.Visible) .. "|" .. tostring(floatingButtonDraggers[string.gsub(buttonname, "_", "")].CanBeDragged))
+					TIESASPointSave:set(string.gsub(buttonname, "_", ""), udim2Serializer(newPos) .. "|" .. udim2Serializer(newFloatingButton.Size) .. "|" .. tostring(newFloatingButton.Visible) .. "|" .. tostring(floatingButtonDraggers[string.gsub(buttonname, "_", "")].CanBeDragged))
 				end
 		
 				local holder = ClickAndHold.new(newFloatingButton)
@@ -2236,9 +2269,9 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 				if floatingButtonConnections[string.gsub(buttonname, "_", "")] then
 					floatingButtonConnections[string.gsub(buttonname, "_", "")]:Disconnect()
 				end
-				YARHMPointSave:remove(string.gsub(buttonname, "_", ""))
+				TIESASPointSave:remove(string.gsub(buttonname, "_", ""))
 				task.spawn(function()
-					local buttontodestroy = getgenv().YARHM.FloatingButtons:FindFirstChild(string.gsub(buttonname, "_", ""))
+					local buttontodestroy = getgenv().TIESAS.FloatingButtons:FindFirstChild(string.gsub(buttonname, "_", ""))
 					local btdtween = ts:Create(buttontodestroy, TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
 						Size = UDim2.new(0,0,0,0)
 					})
@@ -2255,7 +2288,7 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 				for _, item in ipairs(module) do
 					if item["Type"] == "Button" then
 						local key = string.gsub(item["Args"][1], "_", "")
-						local saved = YARHMPointSave:get(key)
+						local saved = TIESASPointSave:get(key)
 						if saved then
 							FUNCTIONSmodule.createFloatingButton(item, Instance.new("TextButton"), item["Args"][1], true)
 						end
@@ -2329,7 +2362,8 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 					button.TextScaled = true
 					button.TextColor3 = FUNCTIONSmodule.getTheme().textColor
 					button.Font = Enum.Font.GothamBold
-					button.Size = UDim2.new(1,0,0,25)
+					button.Size = UDim2.new(1, 0, 0, getgenv().TIESAS_BUTTON_HEIGHT)
+					button:SetAttribute("TiesasResizableButton", true)
 		
 					local padding = Instance.new("UIPadding")
 					padding.Parent = button
@@ -2338,7 +2372,12 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 					padding.PaddingBottom = UDim.new(0, 5)
 		
 		
-					Instance.new("UICorner", button)
+					local corner = Instance.new("UICorner", button)
+					corner.CornerRadius = UDim.new(0, 10)
+					local stroke = Instance.new("UIStroke", button)
+					stroke.Color = Color3.fromRGB(215, 198, 235)
+					stroke.Transparency = 0.35
+					stroke.Thickness = 1
 		
 					local hold = false
 		
@@ -2366,7 +2405,8 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 		
 					local gridlayout = Instance.new("UIGridLayout")
 					gridlayout.Parent = frame
-					gridlayout.CellSize = UDim2.new((1 / item["Args"][1]) - 0.03, 0, 0, 30) -- remove 0.03 because if not it would wrap on its own lol
+					gridlayout.CellSize = UDim2.new((1 / item["Args"][1]) - 0.03, 0, 0, getgenv().TIESAS_BUTTON_HEIGHT)
+					gridlayout:SetAttribute("TiesasResizableGrid", true)
 		
 					--print("------")
 					--print(item["Args"][2])
@@ -2390,6 +2430,7 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 						button.TextScaled = true
 						button.TextColor3 = FUNCTIONSmodule.getTheme().textColor
 						button.Font = Enum.Font.GothamBold
+						button:SetAttribute("TiesasResizableButton", true)
 		
 						local padding = Instance.new("UIPadding")
 						padding.Parent = button
@@ -2397,7 +2438,12 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 						padding.PaddingTop = UDim.new(0, 5)
 						padding.PaddingBottom = UDim.new(0, 5)
 		
-						Instance.new("UICorner", button)
+						local corner = Instance.new("UICorner", button)
+						corner.CornerRadius = UDim.new(0, 10)
+						local stroke = Instance.new("UIStroke", button)
+						stroke.Color = Color3.fromRGB(215, 198, 235)
+						stroke.Transparency = 0.35
+						stroke.Thickness = 1
 		
 						button.MouseButton1Click:Connect(function()
 							if item["Toggleable"] then
@@ -2427,7 +2473,7 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 		
 		
 				elseif item["Type"] == "Input" then
-					local cloneinput = getgenv().YARHM.TextBoxPlaceholder:Clone()
+					local cloneinput = getgenv().TIESAS.TextBoxPlaceholder:Clone()
 					cloneinput.Parent = frameHolder
 					cloneinput.Visible = true
 					
@@ -2445,7 +2491,7 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 						item["Args"][3](cloneinput.TextButton, cloneinput.TextBox.Text)
 					end)
 				elseif item["Type"] == "Toggle" then
-					local clonetoggle = getgenv().YARHM.Toggle:Clone()
+					local clonetoggle = getgenv().TIESAS.Toggle:Clone()
 					clonetoggle.Parent = frameHolder
 					clonetoggle.Visible = true
 		
@@ -2481,8 +2527,8 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 						item["Args"][2](clonetoggletoggler, toggleStates[item["Args"][1] .. module.Name])
 					end)
 				elseif item["Type"] == "Dropdown" then	
-					local clonedropdown = getgenv().YARHM.Dropdown:Clone()
-					local dropdownFrame = getgenv().YARHM.DropdownFrameSample
+					local clonedropdown = getgenv().TIESAS.Dropdown:Clone()
+					local dropdownFrame = getgenv().TIESAS.DropdownFrameSample
 					clonedropdown.Parent = frameHolder
 					clonedropdown.Visible = true
 		
@@ -2525,7 +2571,7 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 						end
 					end)
 				elseif item["Type"] == "Range" then
-					local clonerange = getgenv().YARHM.Range:Clone()
+					local clonerange = getgenv().TIESAS.Range:Clone()
 					clonerange.Parent = frameHolder
 					clonerange.Visible = true
 		
@@ -2673,7 +2719,7 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 			for i, module in ipairs(dense) do
 				local success, err = pcall(function()
 		
-					local listbutton = getgenv().YARHM.ListButton:Clone()
+					local listbutton = getgenv().TIESAS.ListButton:Clone()
 					listbutton.Parent           = script.Parent.Menu.List.ScrollingFrame
 					listbutton.Name             = module.Name
 					listbutton.Text             = module.Name
@@ -2723,7 +2769,7 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 				end)
 		
 				if not success then
-					warn(("[YARHM] Error loading module %q: %s"):format(module.Name, err))
+					warn(("[TIESAS] Error loading module %q: %s"):format(module.Name, err))
 				end
 			end
 		end
@@ -2777,16 +2823,16 @@ do -- Routine Module: StarterGui.YARHM.FUNCTIONS
 		end
 		
 		
-		getgenv().YARHMFUNCTIONS = FUNCTIONSmodule
+		getgenv().TIESASFUNCTIONS = FUNCTIONSmodule
 		return FUNCTIONSmodule
 		
     end
     routine_module_scripts[script] = module_script
 end
-do -- Routine Module: StarterGui.YARHM.DraggableObject
+do -- Routine Module: StarterGui.TIESAS.DraggableObject
     local script = Instance.new("ModuleScript")
     script.Name = "DraggableObject"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local function module_script()
 
 		local function a(b,c)local d=c.AbsoluteSize;local e=c.AbsolutePosition;local f=b.X.Scale*d.X+b.X.Offset;local g=b.Y.Scale*d.Y+b.Y.Offset;local h=math.clamp(f,0,d.X)local i=math.clamp(g,0,d.Y)local j=UDim2.new(b.X.Scale,h-b.X.Scale*d.X,b.Y.Scale,i-b.Y.Scale*d.Y)return j end;local k=UDim2.new;local l=game:GetService("UserInputService")local m=game:GetService("TweenService")local n={}n.__index=n;function n.new(o,p,q,r)local self={}self.Object=o;self.ToMove=p;self.Smooth=q;self.CallbackOnly=r;self.DragStarted=nil;self.DragEnded=nil;self.Dragged=nil;self.Dragging=false;self.LastPosition=nil;self.Velocity=Vector2.new(0,0)setmetatable(self,n)return self end;function n:Enable()local s=self.Object;local t=self.ToMove;local u=nil;local v=nil;local w=nil;local x=false;local function y(z)local A=z.Position-v;local B=UDim2.new(w.X.Scale,w.X.Offset+A.X,w.Y.Scale,w.Y.Offset+A.Y)if self.CallbackOnly then else B=a(B,self.Object:FindFirstAncestorWhichIsA("ScreenGui"))if(self.Smooth==nil or self.Smooth==true)and self.Smooth~=false then m:Create(t and t or s,TweenInfo.new(0.5,Enum.EasingStyle.Cubic,Enum.EasingDirection.Out),{Position=B}):Play()else local C=t and t or s;C.Position=B end end;return B end;self.InputBegan=s.InputBegan:Connect(function(z)if z.UserInputType==Enum.UserInputType.MouseButton1 or z.UserInputType==Enum.UserInputType.Touch then x=true;local D;D=z.Changed:Connect(function()if z.UserInputState==Enum.UserInputState.End and(self.Dragging or x)then self.Dragging=false;D:Disconnect()if self.DragEnded and not x then self.DragEnded(self.Velocity)end;x=false end end)end end)self.InputChanged=s.InputChanged:Connect(function(z)if z.UserInputType==Enum.UserInputType.MouseMovement or z.UserInputType==Enum.UserInputType.Touch then u=z end end)self.InputChanged2=l.InputChanged:Connect(function(z)if s.Parent==nil then self:Disable()return end;if x then x=false;if self.DragStarted then self.DragStarted()end;self.Dragging=true;v=z.Position;if t then w=t.Position else w=s.Position end;self.LastPosition=z.Position end;if z==u and self.Dragging then local B=y(z)self.Velocity=z.Position-self.LastPosition;self.LastPosition=z.Position;if self.Dragged then self.Dragged(B)end end end)end;function n:Disable()self.InputBegan:Disconnect()self.InputChanged:Disconnect()self.InputChanged2:Disconnect()if self.Dragging then self.Dragging=false;if self.DragEnded then self.DragEnded(self.Velocity)end end end;return n
@@ -2794,10 +2840,10 @@ do -- Routine Module: StarterGui.YARHM.DraggableObject
     end
     routine_module_scripts[script] = module_script
 end
-do -- Routine Module: StarterGui.YARHM.ClickAndHold
+do -- Routine Module: StarterGui.TIESAS.ClickAndHold
     local script = Instance.new("ModuleScript")
     script.Name = "ClickAndHold"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local function module_script()
 
 
@@ -2805,61 +2851,61 @@ do -- Routine Module: StarterGui.YARHM.ClickAndHold
     end
     routine_module_scripts[script] = module_script
 end
-do -- Routine Module: StarterGui.YARHM.Spring
+do -- Routine Module: StarterGui.TIESAS.Spring
     local script = Instance.new("ModuleScript")
     script.Name = "Spring"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local function module_script()
 
 		local a=game:GetService("RunService")local b={}function OverDamping(c,d,e,f,g,h)local i=d*d-4*e/c;local j=-1/2;local k=d+math.sqrt(i)local l=d-math.sqrt(i)local m,n=j*k,j*l;local o,p=(n*f-g)/(n-m),(m*f-g)/(m-n)local q=h/e;return{Offset=function(r)return o*math.exp(m*r)+p*math.exp(n*r)+q end,Velocity=function(r)return o*m*math.exp(m*r)+p*n*math.exp(n*r)end,Acceleration=function(r)return o*m*m*math.exp(m*r)+p*n*n*math.exp(n*r)end}end;function CriticalDamping(c,d,e,f,g,h)local s=-d/2;local o,p=f,g-s*f;local q=h/e;return{Offset=function(r)return math.exp(s*r)*(o+p*r)+q end,Velocity=function(r)return math.exp(s*r)*(p*s*r+o*s+p)end,Acceleration=function(r)return s*math.exp(s*r)*(p*s*r+o*s+2*p)end}end;function UnderDamping(c,d,e,f,g,h)local i=d*d-4*e/c;local s=-d/2;local t=math.sqrt(-i)local o,p=f,(g-s*f)/t;local q=h/e;return{Offset=function(r)return math.exp(s*r)*(o*math.cos(t*r)+p*math.sin(t*r))+q end,Velocity=function(r)return-math.exp(s*r)*((o*t-p*s)*math.sin(t*r)+(-p*t-o*s)*math.cos(t*r))end,Acceleration=function(r)return-math.exp(s*r)*((p*t*t+2*o*s*t-p*s*s)*math.sin(t*r)+(o*t*t-2*p*s*t-o*s*s)*math.cos(t*r))end}end;function b.F(u)local f,g,h=u.InitialOffset,u.InitialVelocity,u.ExternalForce;local c,d,e=u.Mass,u.Damping,u.Constant;local i=d*d-4*e/c;if i>0 then return OverDamping(c,d,e,f,g,h)elseif i==0 then return CriticalDamping(c,d,e,f,g,h)else return UnderDamping(c,d,e,f,g,h)end end;local v=b;local w=math.sqrt;local x=math.pi;local y={OFFSET="Offset",VELOCITY="Velocity",ACCELERATION="Acceleration",GOAL="Goal",FREQUENCY="Frequency"}local z=[[.]]local A=[[.]]local u={}local B={}B.__index=function(self,C)local D={[y.OFFSET]=function()local r=tick()-self.StartTick;local E=self.F;local F=E.Offset(r)return F end,[y.VELOCITY]=function()local r=tick()-self.StartTick;local E=self.F;local G=E.Velocity(r)return G end,[y.ACCELERATION]=function()local r=tick()-self.StartTick;local E=self.F;local H=E.Acceleration(r)return H end,[y.GOAL]=function()local I=self.ExternalForce;local J=self.Constant;return I/J end,[y.FREQUENCY]=function()local K=self.Damping;local L=self.Constant;local M=self.Mass;return w(-K*K+4*L/M)/(2*x)end}local N=rawget(self,C)if N~=nil then return N end;local O=D[C]if O~=nil then return O()end;return B[C]end;B.__tostring=function(self)local r=tick()-self.StartTick;local E=self.F;local P=self.AdvancedObjectStringEnabled;local Q;if P==false then Q=string.format(z,E.Offset(r),E.Velocity(r),E.Acceleration(r))elseif P==true then Q=string.format(A,self.Mass,self.Damping,self.Constant,self.Goal,self.Frequency,self.InitialOffset,self.InitialVelocity,self.ExternalForce,self.StartTick,E.Offset(r),E.Velocity(r),E.Acceleration(r))end;return Q end;function u.new(M,K,L,f,g,R)assert(M>0,"Mass for spring system cannot be less than or equal to 0")assert(L>0,"Spring constant for spring system cannot be less than or equal to 0")f=f or 0;g=g or 0;R=R or 0;local S=R*L;local T={Mass=M,Damping=K,Constant=L,InitialOffset=f-R,InitialVelocity=g,ExternalForce=S,AdvancedObjectStringEnabled=false,StartTick=0}setmetatable(T,B)T:Reset()return T end;function u.fromFrequency(M,K,U,f,g,R)assert(M>0,"Mass for spring system cannot be less than or equal to 0")assert(U>0,"Spring frequency for spring system cannot be less than or equal to 0")local L=0.25*M*(4*x*x*U*U+K*K)f=f or 0;g=g or 0;R=R or 0;local S=R*L;local T={Mass=M,Damping=K,Constant=L,InitialOffset=f-R,InitialVelocity=g,ExternalForce=S,AdvancedObjectStringEnabled=false,StartTick=0}setmetatable(T,B)T:Reset()return T end;function B:Reset()self.F=v.F(self)self.StartTick=tick()end;function B:SetExternalForce(V)self.ExternalForce=V;self.InitialOffset=self.Offset-V/self.Constant;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SetGoal(R)self.ExternalForce=R*self.Constant;self.InitialOffset=self.Offset-R;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SetFrequency(U)self.Constant=0.25*self.Mass*(4*x*x*U*U+self.Damping*self.Damping)self.InitialOffset=self.Offset;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SnapToCriticalDamping()self.Damping=2*w(self.Constant/self.Mass)self.InitialOffset=self.Offset;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SetOffset(F,W)self.InitialOffset=F-self.Goal;self.InitialVelocity=W and 0 or self.Velocity;self:Reset()end;function B:AddOffset(F)self.InitialOffset=self.Offset+F;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SetVelocity(G)self.InitialOffset=self.Offset;self.InitialVelocity=G;self:Reset()end;function B:AddVelocity(G)self.InitialOffset=self.Offset;self.InitialVelocity=self.Velocity+G;self:Reset()end;function B:Print()local X=tostring(self)print(X)end;return u
     end
     routine_module_scripts[script] = module_script
 end
-do -- Routine Module: StarterGui.YARHM.ESPIndicator
+do -- Routine Module: StarterGui.TIESAS.ESPIndicator
     local script = Instance.new("ModuleScript")
     script.Name = "ESPIndicator"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local function module_script()
 
 		-- Robust ESP module with distancing, arrows, and grouping
-		-- Designed and written by YARHM
+		-- Designed and written by TIESAS
 		
 		local e={} e.__index=e local a=game:GetService("RunService") local _=game:GetService("Players") local b=game:GetService("HttpService") local l=game:GetService("TweenService") e.Groups={} e.TargetIndex={} e.Defaults={AccentColor=Color3.new(1,1,0),HighlightFillTransparency=0.7,HighlightOutlineTransparency=0,HighlightDepthMode=Enum.HighlightDepthMode.AlwaysOnTop,ArrowShow=false,ArrowEdgePadding=50,ArrowMinDistance=0,ArrowSize=UDim2.new(0,30,0,30),ArrowImage="rbxassetid://97136202386756",ArrowShowDistanceText=true,ArrowDistanceFont=Enum.Font.Montserrat,ArrowDistanceTextSize=18,ShowLabel=false,LabelText="Target",LabelMaxDistance=99999,LabelOffset=Vector3.new(0,2,0),Parent=game:GetService("CoreGui")} function e.new(b)local c=setmetatable({},e) c.Settings={} for a,_ in pairs(e.Defaults)do c.Settings[a]=(b and b[a]~=nil)and b[a]or _ end local _=c.Settings.Parent or _.LocalPlayer:WaitForChild("PlayerGui") c.ScreenGui=Instance.new("ScreenGui") c.ScreenGui.Name="ESPIndicators" c.ScreenGui.IgnoreGuiInset=true c.ScreenGui.ResetOnSpawn=false c.ScreenGui.Parent=_ c.ArrowTemplate=Instance.new("ImageLabel") c.ArrowTemplate.Name="ArrowTemplate" c.ArrowTemplate.Size=c.Settings.ArrowSize c.ArrowTemplate.AnchorPoint=Vector2.new(0.5,0.5) c.ArrowTemplate.BackgroundTransparency=1 c.ArrowTemplate.Image=c.Settings.ArrowImage c.ArrowTemplate.ImageColor3=c.Settings.AccentColor c.ArrowTemplate.Visible=false c.ArrowTemplate.Parent=c.ScreenGui c.Scaler=Instance.new("UIScale") c.Scaler.Name="Scaler" c.Scaler.Scale=0 c.Scaler.Parent=c.ArrowTemplate c.Indicators={} c._updateConn=a.RenderStepped:Connect(function()c:_update()end) c._cleanupConn=a.Heartbeat:Connect(function()c:_cleanupOrphanedArrows() c:_cleanupOrphanedHighlights() c:_cleanupOrphanedLabels()end) return c end function e:AddGroup(_)local a=e.Groups[_] if not a then a={enabled=true,properties={},targets={}} e.Groups[_]=a end return a end function e:GetGroup(_)return e.Groups[_]end function e:RemoveGroup(b)local _=e.Groups[b] if not _ then return false end for _,_ in ipairs(_.targets)do local c=e.TargetIndex[_] if c then for _,a in ipairs(c)do if a==b then table.remove(c,_) break end end if#c==0 then e.TargetIndex[_]=nil end end if not e.TargetIndex[_]then self:Remove(_)end end e.Groups[b]=nil return true end function e:ClearAllGroups()for a,_ in pairs(e.Groups)do self:RemoveGroup(a)end end function e:ToggleGroup(_,a)local b=e.Groups[_] if not b then return end b.enabled=(a~=nil)and a or not b.enabled for _,_ in ipairs(b.targets)do local _=self.Indicators[_] if _ then if _.Highlight then _.Highlight.Enabled=b.enabled end if _.Arrow then _.Arrow.Visible=b.enabled and self.Settings.ArrowShow end if _.Label then _.Label.Enabled=b.enabled end end end return b.enabled end function e:SetGroupProperty(_,a,b)local _=self:AddGroup(_) _.properties[a]=b for _,_ in ipairs(_.targets)do local _=self.Indicators[_] if _ then if a=="AccentColor"then if _.Highlight then _.Highlight.FillColor=b _.Highlight.OutlineColor=b end if _.Arrow then _.Arrow.ImageColor3=b end if _.DistanceLabel then _.DistanceLabel.TextColor3=b end if _.Label and _.Label:FindFirstChild("TextLabel")then _.Label.TextLabel.TextColor3=b end end end end end function e:Add(a,g)assert(a,"ESPIndicator:Add requires a non-nil target") g=g or{} local d=Instance.new("Highlight") d.Name="Highlight_"..b:GenerateGUID(false) d.Adornee=a d.FillTransparency=g.HighlightFillTransparency or self.Settings.HighlightFillTransparency d.FillColor=g.AccentColor or self.Settings.AccentColor d.OutlineColor=g.AccentColor or self.Settings.AccentColor d.OutlineTransparency=g.HighlightOutlineTransparency or self.Settings.HighlightOutlineTransparency d.DepthMode=g.HighlightDepthMode or self.Settings.HighlightDepthMode d.Parent=self.ScreenGui local c,_,e if(g.ArrowShow or self.Settings.ArrowShow)then c=self.ArrowTemplate:Clone() c.Name="Arrow_"..b:GenerateGUID(false) c.ImageColor3=g.AccentColor or self.Settings.AccentColor c.Visible=true c.Parent=self.ScreenGui _=c:FindFirstChild("Scaler") if(g.ArrowShowDistanceText or self.Settings.ArrowShowDistanceText)then e=Instance.new("TextLabel") e.Name="DistanceLabel" e.AnchorPoint=Vector2.new(0.5,0) e.BackgroundTransparency=1 e.Font=g.ArrowDistanceFont or self.Settings.ArrowDistanceFont e.TextSize=g.ArrowDistanceTextSize or self.Settings.ArrowDistanceTextSize e.TextColor3=g.AccentColor or self.Settings.AccentColor e.Parent=c end end local f if(g.ShowLabel or self.Settings.ShowLabel)then f=Instance.new("BillboardGui") f.Name="Label_"..b:GenerateGUID(false) f.AlwaysOnTop=true f.MaxDistance=self.Settings.LabelMaxDistance f.Size=UDim2.new(0,70,0,70) f.StudsOffset=self.Settings.LabelOffset f.Adornee=a f.Parent=self.ScreenGui local _=Instance.new("TextLabel") _.Name="TextLabel" _.Size=UDim2.new(1,0,1,0) _.AnchorPoint=Vector2.new(0.5,0.5) _.Position=UDim2.new(0.5,0,0.5,0) _.BackgroundTransparency=1 _.Font=Enum.Font.SourceSansBold _.TextScaled=true _.TextWrapped=true _.TextSize=14 _.TextColor3=g.AccentColor or self.Settings.AccentColor _.Text=g.LabelText or self.Settings.LabelText _.Parent=f Instance.new("UIStroke",_)end self.Indicators[a]={Highlight=d,Arrow=c,Scaler=_,DistanceLabel=e,Label=f,Options=g} local _=g.GroupName or self.Settings.GroupName if _ then self:AddToGroup(a,_)end end function e:Remove(c)local _=self.Indicators[c] if not _ then return end if _.Highlight then _.Highlight.Adornee=nil _.Highlight:Destroy()end if _.Arrow then _.Arrow:Destroy()end if _.Label then _.Label:Destroy()end local _=e.TargetIndex[c] if _ then for _,_ in ipairs(_)do local b=e.Groups[_] if b then for a,_ in ipairs(b.targets)do if _==c then table.remove(b.targets,a) break end end end end e.TargetIndex[c]=nil end self.Indicators[c]=nil end function e:AddToGroup(c,b)local _=self:AddGroup(b) if not table.find(_.targets,c)then table.insert(_.targets,c)end local a=e.TargetIndex[c] if not a then a={} e.TargetIndex[c]=a end if not table.find(a,b)then table.insert(a,b)end for a,_ in pairs(_.properties)do self:SetGroupProperty(b,a,_)end if not _.enabled then local _=self.Indicators[c] if _ and _.Highlight then _.Highlight.Enabled=false end end return true end function e:RemoveFromGroup(d,b)local c=e.Groups[b] if not c then return false end if table.find(c.targets,d)then for _,a in ipairs(c.targets)do if a==d then table.remove(c.targets,_) break end end else return false end local c=e.TargetIndex[d] if c then for a,_ in ipairs(c)do if _==b then table.remove(c,a) break end end if#c==0 then e.TargetIndex[d]=nil end end return true end function e:GetGroupTargets(_)local _=e.Groups[_] return _ and _.targets or{}end function e:GetTargetGroups(_)return e.TargetIndex[_]or{}end function e:_cleanupOrphanedHighlights()for _,_ in ipairs(self.ScreenGui:GetChildren())do if _:IsA("Highlight")and not table.find(self:_allHighlights(),_)then _.Adornee=nil _:Destroy()end end end function e:_allHighlights()local a={} for _,_ in pairs(self.Indicators)do if _.Highlight then table.insert(a,_.Highlight)end end return a end function e:_cleanupOrphanedArrows()for _,_ in ipairs(self.ScreenGui:GetChildren())do if _:IsA("ImageLabel")and _.Name:match("^Arrow_")then if not table.find(self:_allArrows(),_)then _:Destroy()end end end end function e:_allArrows()local a={} for _,_ in pairs(self.Indicators)do if _.Arrow then table.insert(a,_.Arrow)end end return a end function e:_cleanupOrphanedLabels()for _,_ in ipairs(self.ScreenGui:GetChildren())do if _:IsA("BillboardGui")and _.Name:match("^Label_")then if not table.find(self:_allLabels(),_)then _.Adornee=nil _:Destroy()end end end end function e:_allLabels()local a={} for _,_ in pairs(self.Indicators)do if _.Label then table.insert(a,_.Label)end end return a end function e:_update()local a=workspace.CurrentCamera local _=a.ViewportSize local f,i=_.X,_.Y for _,p in pairs(self.Indicators)do local j=p.Options local h=p.Arrow local k=p.Scaler if((not h)or(not k))and self.Settings.ArrowShow then self:Remove(_) continue end if not h then continue end local n if _:IsA("Model")then n=(_.PrimaryPart and _.PrimaryPart.Position)or _:GetModelCFrame().p elseif _:IsA("BasePart")then n=_.Position else continue end local m,e=a:WorldToViewportPoint(n) local c=(a.CFrame.p-n).Magnitude local _=j.ArrowMinDistance or self.Settings.ArrowMinDistance local o=j.ArrowEdgePadding or self.Settings.ArrowEdgePadding if e and c>_ then l:Create(k,TweenInfo.new(0.1,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Scale=0}):Play()else l:Create(k,TweenInfo.new(0.1,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Scale=1}):Play() local d,g=f-o*2,i-o*2 local b=a.CFrame local _=math.sqrt((d/2)^2+(g/2)^2) local a=n-b.Position local a=b:VectorToObjectSpace(a) local n=Vector2.new(a.X,a.Y).Unit local a=math.clamp(m.X,o,f-o) local b=math.clamp(m.Y,o,i-o) if a==m.X and b==m.Y and e then l:Create(k,TweenInfo.new(0.1,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Scale=0}):Play()else local _=n*_ local b if math.abs(_.Y)>g/2 then b=n*math.abs((g/2)/n.Y)else b=n*math.abs((d/2)/n.X)end local a=f/2+b.X local _=i/2-b.Y local b=math.atan2(n.X,n.Y) l:Create(h,TweenInfo.new(0.1,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Position=UDim2.fromOffset(a,_),Rotation=math.deg(b)}):Play()end if p.DistanceLabel then p.DistanceLabel.Text=string.format("%dm",math.round(c)) local _=(j.ArrowSize and j.ArrowSize.Y.Offset or self.Settings.ArrowSize.Y.Offset)+16 p.DistanceLabel.Position=UDim2.new(0.5,0,0,_)end end end end function e:Destroy()if self._updateConn then self._updateConn:Disconnect()end if self._cleanupConn then self._cleanupConn:Disconnect()end self:ClearAllGroups() for _,_ in pairs(self.Indicators)do if _.Highlight then _.Highlight:Destroy()end if _.Arrow then _.Arrow:Destroy()end if _.Label then _.Label:Destroy()end end self.ScreenGui:Destroy() self.Indicators={} e.Groups={} e.TargetIndex={}end return e
     end
     routine_module_scripts[script] = module_script
 end
-do -- Routine Module: StarterGui.YARHM.Bezier
+do -- Routine Module: StarterGui.TIESAS.Bezier
     local script = Instance.new("ModuleScript")
     script.Name = "Bezier"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local function module_script()
 
 		local h={} h.__index=h function h.new(...)local k={...} assert(#k>=3,"Must have at least 3 points") local e=(#k==3) local _=(#k==4) local j={} local d=Vector3.new local b=d().lerp local f=nil local i={} local c=0 local a=nil local function g(_)local _={_.X,_.Y,_.Z} function _:ToVector3()return d(self[1],self[2],self[3])end function _:lerp(_,a)return b(self:ToVector3(),_:ToVector3(),a)end return _ end if(not e and not _)then for _=1,#k-1 do local a=g(k[_]) local _=g(k[_+1]) local _={a,_,g(a)} i[#i+1]=_ end local b=i for _=#i,2,-1 do local a={} for c=1,_-1 do local b,_=b[c],b[c+1] local _={b[3],_[3],g(b[3])} a[c]=_ i[#i+1]=_ end b=a end a=b[1] c=#i end if(e)then local b,c,_=k[1],k[2],k[3] function j:Get(d,a)if(a)then d=(d<0 and 0 or d>1 and 1 or d)end return(1-d)*(1-d)*b+2*(1-d)*d*c+d*d*_ end elseif(_)then local _,a,c,b=k[1],k[2],k[3],k[4] function j:Get(e,d)if(d)then e=(e<0 and 0 or e>1 and 1 or e)end return(1-e)*(1-e)*(1-e)*_+3*(1-e)*(1-e)*e*a+3*(1-e)*e*e*c+e*e*e*b end else function j:Get(b,_)if(_)then b=(b<0 and 0 or b>1 and 1 or b)end for _=1,c do local _=i[_] local a=_[1]:lerp(_[2],b) local _=_[3] _[1],_[2],_[3]=a.X,a.Y,a.Z end return a[3]:ToVector3()end end function j:GetLength(_)if(not f)then local a=self:GetPath(_ or 0.1) local b=0 for _=2,#a do local _=(a[_-1]-a[_]).Magnitude b=(b+_)end f=b end return f end function j:GetPath(_)assert(type(_)=="number","Must provide a step increment") assert(_>0 and _<1,"Step out of domain; should be between 0 and 1 (exclusive)") local b={} local a=0 for _=0,1,_ do a=_ b[#b+1]=self:Get(_)end if(a<1)then local _=((1-a)<(_*0.5)) b[#b+(_ and 0 or 1)]=self:Get(1)end return b end function j:GetPathByNumberSegments(_)assert(type(_)=="number","Must provide number of segments") assert(_>0,"Number of segments must be greater than 0") return self:GetPath(1/_)end function j:GetPathBySegmentLength(a)assert(type(a)=="number","Must provide a segment length") assert(a>0,"Segment length must be greater than 0") local _=self:GetLength() local _=_/a return self:GetPathByNumberSegments(math.floor(_+0.5))end function j:GetPoints()return k end return setmetatable(j,h)end return h
     end
     routine_module_scripts[script] = module_script
 end
-do -- Routine Module: StarterGui.YARHM.PointSave
+do -- Routine Module: StarterGui.TIESAS.PointSave
     local script = Instance.new("ModuleScript")
     script.Name = "PointSave"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local function module_script()
 
 		-- Datasaving module using files and folders
-		-- Designed and written by YARHM
+		-- Designed and written by TIESAS
 		
 		local _=false local function d(...)if _ then print("[PointSave DEBUG]:",...)end end getgenv()._FOLDERS=getgenv()._FOLDERS or{} getgenv()._FILES=getgenv()._FILES or{} isfolder=isfolder or function(_)d("Checking if folder exists:",_) return getgenv()._FOLDERS[_]~=nil end makefolder=makefolder or function(_)d("Creating folder:",_) getgenv()._FOLDERS[_]={} return getgenv()._FOLDERS[_]end isfile=isfile or function(_)d("Checking if file exists:",_) return getgenv()._FILES[_]~=nil end writefile=writefile or function(a,_)d("Writing file:",a,"with content:",_) getgenv()._FILES[a]=_ return getgenv()._FILES[a]end readfile=readfile or function(_)d("Reading file:",_) return getgenv()._FILES[_]end delfile=delfile or function(_)d("Deleting file:",_) getgenv()._FILES[_]=nil end listfiles=listfiles or function(c)d("Listing files in folder:",c) local _=getgenv()._FOLDERS[c] if _ then local a={} for b,_ in pairs(getgenv()._FILES)do if b:sub(1,#c+1)==c.."/"then local _=b:sub(#c+2) d("Found file in folder:",_) table.insert(a,_)end end return a end d("Folder does not exist:",c) return{}end local b={} b.__index=b local c="PointSaveData" local function _()if not isfolder(c)then d("Base folder not found, creating:",c) makefolder(c)else d("Base folder already exists:",c)end end function b.new(a)d("Initializing new PointSave instance for namespace:",a) _() local _=setmetatable({},b) _.namespace=a _.folderPath=c.."/"..a if not isfolder(_.folderPath)then d("Namespace folder does not exist, creating:",_.folderPath) makefolder(_.folderPath)else d("Namespace folder already exists:",_.folderPath)end return _ end function b:set(b,a)local _=self.folderPath.."/"..b..".txt" d("Setting value for key:",b,"->",a) writefile(_,tostring(a))end function b:get(a)local _=self.folderPath.."/"..a..".txt" d("Getting value for key:",a) if isfile(_)then local _=readfile(_) d("Found value for key:",a,"->",_) return _ end d("Key not found:",a) return nil end function b:remove(a)local _=self.folderPath.."/"..a..".txt" d("Removing key:",a) if isfile(_)then delfile(_) d("Removed file for key:",a)else d("File for key does not exist:",a)end end function b:clear()d("Clearing all keys in namespace:",self.namespace) local _=listfiles(self.folderPath) for _,_ in ipairs(_)do local _=self.folderPath.."/".._ if isfile(_)then d("Deleting file:",_) delfile(_)end end end function b.deleteNamespace(a)local b=c.."/"..a d("Deleting namespace:",a) local _=listfiles(b) for _,_ in ipairs(_)do local _=b.."/".._ if isfile(_)then d("Deleting file from namespace:",_) delfile(_)end end getgenv()._FOLDERS[b]=nil d("Deleted folder for namespace:",a)end function b.listNamespaces()d("Listing all namespaces") _() local b={} for a,_ in pairs(getgenv()._FOLDERS)do if a:sub(1,#c+1)==c.."/"then local _=a:sub(#c+2) d("Found namespace:",_) table.insert(b,_)end end return b end return b
     end
     routine_module_scripts[script] = module_script
 end
-do -- Routine Module: StarterGui.YARHM.Theme
+do -- Routine Module: StarterGui.TIESAS.Theme
     local script = Instance.new("ModuleScript")
     script.Name = "Theme"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local function module_script()
 
-		-- Beautiful theming module for YARHM
+		-- Beautiful theming module for TIESAS
 		
-		local YARHMRoot = getgenv().YARHM
+		local TIESASRoot = getgenv().TIESAS
 		local api = {
 			colors = {
 				font = Enum.Font.Montserrat,
@@ -3002,7 +3048,7 @@ do -- Routine Module: StarterGui.YARHM.Theme
 		
 		function api:setColorTable(t)
 			api.colors = t
-			if getgenv then getgenv().YARHM_THEME = t end
+			if getgenv then getgenv().TIESAS_THEME = t end
 		end
 		
 		function api:init(p)
@@ -3025,14 +3071,14 @@ do -- Routine Module: StarterGui.YARHM.Theme
     end
     routine_module_scripts[script] = module_script
 end
-do -- Routine Module: StarterGui.YARHM.FlyUtility
+do -- Routine Module: StarterGui.TIESAS.FlyUtility
     local script = Instance.new("ModuleScript")
     script.Name = "FlyUtility"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local function module_script()
 
 		-- Mobile-compatible fly module
-		-- Designed and written by YARHM
+		-- Designed and written by TIESAS
 		
 		local l={} local _=game:GetService("Players") local b=game:GetService("RunService") local d=_.LocalPlayer local h=false local e=50 local c=2 local i=0 local g=Vector3.new() local j=nil local k=nil local f=nil local function _()if f then f:Disconnect() f=nil end if j then j:Destroy() j=nil end if k then k:Destroy() k=nil end local _=d.Character if _ then local _=_:FindFirstChildOfClass("Humanoid") if _ then _.PlatformStand=false end end h=false i=0 end local function a(_)local a=d.Character if not h or not a then l:Stop() return end local _=a:FindFirstChildOfClass("Humanoid") local d=a:FindFirstChild("HumanoidRootPart") local a=workspace.CurrentCamera if not _ or _.Health<=0 or not d or not a then l:Stop() return end local _=_.MoveDirection if _.Magnitude>0.01 then i=math.min(e,i+c) g=_.Unit else i=math.max(0,i-c)end local _=Vector3.new(g.X,0,g.Z) local c=Vector3.zero if _.Magnitude>0 then c=_.Unit*i end local f=a.CFrame.LookVector.Unit local b=g:Dot(f) local _=b<0 and-1 or 1 local a=Vector3.new(f.X,0,f.Z) if a.Magnitude>0 then a=a.Unit end local a=math.abs(g:Dot(a)) local _=f.Y*_*a local _=_*i k.Velocity=Vector3.new(c.X,_,c.Z) local _=(i/e)*30 local _=-math.rad(b*_) j.CFrame=CFrame.new(d.Position,d.Position+f)*CFrame.Angles(_,0,0)end function l:Start()if h then return end local c=d.Character if not c then return end local _=c:FindFirstChildOfClass("Humanoid") local c=c:FindFirstChild("HumanoidRootPart") if not _ or not c then return end h=true j=Instance.new("BodyGyro") j.P=100000 j.MaxTorque=Vector3.new(math.huge,math.huge,math.huge) j.CFrame=c.CFrame j.Parent=c k=Instance.new("BodyVelocity") k.P=10000 k.MaxForce=Vector3.new(math.huge,math.huge,math.huge) k.Velocity=Vector3.new(0,0,0) k.Parent=c _.PlatformStand=true f=b.Heartbeat:Connect(a)end function l:Stop()if not h then return end _()end function l:SetMaxSpeed(_)if type(_)=="number"and _>=0 then e=_ else warn("FlyModule:SetMaxSpeed requires a non-negative number.")end end function l:GetMaxSpeed()return e end function l:IsFlying()return h end d.CharacterRemoving:Connect(function(_)if h then l:Stop()end end) return l
     end
@@ -3041,10 +3087,10 @@ end
 
 -- Routines:
 
-local function WMYX_routine() -- Routine: StarterGui.YARHM.Flee the Facility
+local function WMYX_routine() -- Routine: StarterGui.TIESAS.Flee the Facility
     local script = Instance.new("LocalScript")
     script.Name = "Flee the Facility"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local req = require
     local require = function(obj)
         local routine = routine_module_scripts[obj]
@@ -3316,7 +3362,7 @@ local function WMYX_routine() -- Routine: StarterGui.YARHM.Flee the Facility
 	
 	table.insert(module, {
 		Type = "Text",
-		Args = {"ESPs"}
+		Args = {"VISIÓN DE PARTIDA"}
 	})
 	
 	table.insert(module, {
@@ -3512,10 +3558,10 @@ local function WMYX_routine() -- Routine: StarterGui.YARHM.Flee the Facility
 	repeat task.wait() until getgenv().Modules
 	getgenv().Modules[2] = module
 end
-local function CEBY_routine() -- Routine: StarterGui.YARHM.Universal
+local function CEBY_routine() -- Routine: StarterGui.TIESAS.Universal
     local script = Instance.new("LocalScript")
     script.Name = "Universal"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local req = require
     local require = function(obj)
         local routine = routine_module_scripts[obj]
@@ -3552,7 +3598,7 @@ local function CEBY_routine() -- Routine: StarterGui.YARHM.Universal
 	
 	local hidden = false
 	
-	local YARHMPointSave = PointSave.new("YARHM")
+	local TIESASPointSave = PointSave.new("TIESAS")
 	
 	function splitString(str,delim)
 		local broken = {}
@@ -3725,12 +3771,12 @@ local function CEBY_routine() -- Routine: StarterGui.YARHM.Universal
 	
 	--table.insert(module, {
 	--	Type = "Text",
-	--	Args = {"Welcome to YARHM! The open, free script hub."}
+	--	Args = {"Welcome to TIESAS! The open, free script hub."}
 	--})
 	
 	table.insert(module, {
 		Type = "Text",
-		Args = {"<font color='#FFFF00'>Another great script</font> by YARHM developers below!"}
+		Args = {"<font color='#FFFF00'>Another great script</font> by TIESAS developers below!"}
 	})
 	
 	table.insert(module, {
@@ -4501,7 +4547,7 @@ local function CEBY_routine() -- Routine: StarterGui.YARHM.Universal
 	
 	table.insert(module, {
 		Type = "Button",
-		Args = {"Hide YARHM", function(Self)
+		Args = {"Hide TIESAS", function(Self)
 			if uis.KeyboardEnabled then
 				ts:Create(script.Parent.Menu.UIScale, TweenInfo.new(0.6, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
 					Scale = 0
@@ -4515,7 +4561,7 @@ local function CEBY_routine() -- Routine: StarterGui.YARHM.Universal
 				hidden=true
 				fu.notification("Shake your device to bring back the menu.")
 			else
-				fu.notification("Can't hide YARHM!") -- how else are you gonna open???
+				fu.notification("Can't hide TIESAS!") -- how else are you gonna open???
 			end
 		end,}
 	}
@@ -4629,16 +4675,16 @@ local function CEBY_routine() -- Routine: StarterGui.YARHM.Universal
 		Type = "Button",
 		Args = {"Open developer console (debugging)", function(Self)
 			game.StarterGui:SetCore("DevConsoleVisible", true)
-			--getgenv().YARHM.Open.UIStroke.Transparency = 0
-			--getgenv().YARHM.Open.TextTransparency = 0
-			--ts:Create(getgenv().YARHM.Open, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+			--getgenv().TIESAS.Open.UIStroke.Transparency = 0
+			--getgenv().TIESAS.Open.TextTransparency = 0
+			--ts:Create(getgenv().TIESAS.Open, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
 			--	Position = UDim2.fromScale(0.5, 0.903)
 			--}):Play()
 	
-			--ts:Create(getgenv().YARHM.Open.UIStroke, TweenInfo.new(1), {
+			--ts:Create(getgenv().TIESAS.Open.UIStroke, TweenInfo.new(1), {
 			--	Transparency = 1
 			--}):Play()
-			--ts:Create(getgenv().YARHM.Open, TweenInfo.new(1), {
+			--ts:Create(getgenv().TIESAS.Open, TweenInfo.new(1), {
 			--	TextTransparency = 1
 			--}):Play()
 		end}
@@ -4702,10 +4748,10 @@ local function CEBY_routine() -- Routine: StarterGui.YARHM.Universal
 	
 	local function loadThemeFromSave(last)
 		if not last then task.wait(1) else task.wait(0.2) end
-		if YARHMPointSave:get("YARHMGlobal_themeCode") then
-			local themeObjectImport = themeDeserialize(https:JSONDecode(fu.from_base64(YARHMPointSave:get("YARHMGlobal_themeCode"))))
+		if TIESASPointSave:get("TIESASGlobal_themeCode") then
+			local themeObjectImport = themeDeserialize(https:JSONDecode(fu.from_base64(TIESASPointSave:get("TIESASGlobal_themeCode"))))
 			theme:setColorTable(themeObjectImport)
-			theme:init(getgenv().YARHM)
+			theme:init(getgenv().TIESAS)
 	
 			fu.setTheme(themeObjectImport)
 	
@@ -4723,7 +4769,7 @@ local function CEBY_routine() -- Routine: StarterGui.YARHM.Universal
 			function(obj, value)
 				local themeObjectImport = themeDeserialize(https:JSONDecode(fu.from_base64(value)))
 				theme:setColorTable(themeObjectImport)
-				theme:init(getgenv().YARHM)
+				theme:init(getgenv().TIESAS)
 				
 				fu.setTheme(themeObjectImport)
 				
@@ -4731,7 +4777,7 @@ local function CEBY_routine() -- Routine: StarterGui.YARHM.Universal
 				fu.refresharea()
 				fu.notification("Successfully applied theme!")
 				
-				YARHMPointSave:set("YARHMGlobal_themeCode", value)
+				TIESASPointSave:set("TIESASGlobal_themeCode", value)
 			end
 		}
 	})
@@ -4739,7 +4785,7 @@ local function CEBY_routine() -- Routine: StarterGui.YARHM.Universal
 	table.insert(module, {
 		Type = "Button",
 		Args = {"Reload theme", function()
-			theme:init(getgenv().YARHM)
+			theme:init(getgenv().TIESAS)
 	
 			fu.refreshlist()
 			fu.refresharea()
@@ -4749,7 +4795,7 @@ local function CEBY_routine() -- Routine: StarterGui.YARHM.Universal
 	table.insert(module, {
 		Type = "Button",
 		Args = {"Delete theme from save", function()
-			YARHMPointSave:remove("YARHMGlobal_themeCode")
+			TIESASPointSave:remove("TIESASGlobal_themeCode")
 			
 			fu.notification("Theme will not be restored on the next executes.")
 		end,}
@@ -4805,7 +4851,7 @@ local function CEBY_routine() -- Routine: StarterGui.YARHM.Universal
 	
 	--table.insert(module, {
 	--	Type = "Toggle",
-	--	Args = {"Hide YARHM+/Developer tags", function(_, state)
+	--	Args = {"Hide TIESAS+/Developer tags", function(_, state)
 	--		local group = espind:GetGroup("UserTags")
 	--		if group then
 	--			espind:ToggleGroup("UserTags", not state)
@@ -4825,10 +4871,10 @@ local function CEBY_routine() -- Routine: StarterGui.YARHM.Universal
 	repeat task.wait() until getgenv().Modules
 	getgenv().Modules[1] = module
 end
-local function DSZIHQM_routine() -- Routine: StarterGui.YARHM.Init
+local function DSZIHQM_routine() -- Routine: StarterGui.TIESAS.Init
     local script = Instance.new("LocalScript")
     script.Name = "Init"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local req = require
     local require = function(obj)
         local routine = routine_module_scripts[obj]
@@ -4845,7 +4891,7 @@ local function DSZIHQM_routine() -- Routine: StarterGui.YARHM.Init
 	local ts = game:GetService("TweenService")
 	
 	
-	getgenv().YARHM = script.Parent
+	getgenv().TIESAS = script.Parent
 	getgenv().ThemeManager = require(script.Parent.Theme)
 	local COREGUI = game:GetService("CoreGui")
 	function randomString()
@@ -4861,34 +4907,38 @@ local function DSZIHQM_routine() -- Routine: StarterGui.YARHM.Init
 			local hiddenUI = get_hidden_gui or gethui
 			script.Parent.Name = randomString()
 			script.Parent.Parent = hiddenUI()
-			--print("[YARHM] - Using get_hidden_gui for anti-detection.")
+			--print("[TIESAS] - Using get_hidden_gui for anti-detection.")
 		elseif (not is_sirhurt_closure) and (syn and syn.protect_gui) then
 			script.Parent.Name = randomString()
 			syn.protect_gui(script.Parent)
 			script.Parent.Parent = COREGUI
-			--print("[YARHM] - Using syn.protect_gui for anti-detection.")
+			--print("[TIESAS] - Using syn.protect_gui for anti-detection.")
 		elseif COREGUI:FindFirstChild('RobloxGui') then
 			script.Parent.Parent = COREGUI.RobloxGui
-			--print("[YARHM] - Using RobloxGui for anti-detection.")
+			--print("[TIESAS] - Using RobloxGui for anti-detection.")
 		else
-			--warn("[YARHM] - Using CoreGui as anti-detection. This is the most basic coverage and can still be detected.")
+			--warn("[TIESAS] - Using CoreGui as anti-detection. This is the most basic coverage and can still be detected.")
 		end
 	end)
 	
-	--print("[YARHM] - YARHM is now in " .. tostring(script.Parent:GetFullName()))
+	--print("[TIESAS] - TIESAS is now in " .. tostring(script.Parent:GetFullName()))
 	if not s then
-		--warn("[YARHM] - Attempts at anti-detection failed. Using CoreGui as anti-detection.")
+		--warn("[TIESAS] - Attempts at anti-detection failed. Using CoreGui as anti-detection.")
 		warn(e)	
 	end
 	
-	--printidentity("[YARHM] - Your executor level (identity) is")
+	--printidentity("[TIESAS] - Your executor level (identity) is")
 	
-	local getExeName = identifyexecutor or getexecutorname or function() return "Yet Another Roblox Executor v1.2" end
-	--print("[YARHM] - Your executor is " .. getExeName())
+	local getExeName = identifyexecutor or getexecutorname or function() return "Ejecutor de Roblox" end
+	--print("[TIESAS] - Your executor is " .. getExeName())
 	
 	script.Parent.SafeAreaCompatibility = Enum.SafeAreaCompatibility.None
 	script.Parent.ScreenInsets = Enum.ScreenInsets.None
 	script.Parent.ResetOnSpawn = false
+	script.Parent.Menu.UIScale.Scale = getgenv().TIESAS_MENU_SCALE or 1
+	script.Parent.Menu.List.Visible = false
+	script.Parent.Menu.Area.Position = UDim2.fromScale(0.5, 0.61)
+	script.Parent.Menu.Area.Size = UDim2.new(0.91, 0, 0.77, 0)
 	
 	
 	script.Parent.Menu.Position = UDim2.fromScale(0.5, -0.6)
@@ -4906,7 +4956,7 @@ local function DSZIHQM_routine() -- Routine: StarterGui.YARHM.Init
 		game.Loaded:Wait()
 	end
 	
-	--require(script.Parent.FUNCTIONS).notification("Welcome to YARHM Nebula.")
+	-- Cabecera de Tiesas Scripts
 	script.Parent.Menu.HubName.Text = script.Parent.Menu.HubName.Text .. `<font transparency="0.8" size="5">{require(script.Parent.FUNCTIONS).__v}</font>`
 	
 	ts:Create(script.Parent.Menu, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), 
@@ -4918,26 +4968,27 @@ local function DSZIHQM_routine() -- Routine: StarterGui.YARHM.Init
 		{GroupTransparency = 1}
 	):Play()
 	require(script.Parent.FUNCTIONS).refreshlist()
+	require(script.Parent.FUNCTIONS).refresharea()
 	task.wait(0.5)
 	script.Parent.Menu.CanvasGroup.Visible = false
-	script.Parent.Menu.CanvasGroup.TextLabel.Visible = false
-	script.Parent.Menu.CanvasGroup.ImageLabel.Visible = true
+	script.Parent.Menu.CanvasGroup.TextLabel.Visible = true
+	script.Parent.Menu.CanvasGroup.ImageLabel.Visible = false
 	script.Parent.Menu.CanvasGroup.Interactable = true
 	
 	script.Parent.Menu.CloseArea.AllowForSpring:Fire()
 	task.wait(1)
 	require(script.Parent.FUNCTIONS).loadFloatingButtons()
-	require(script.Parent.Theme):init(getgenv().YARHM)
+	require(script.Parent.Theme):init(getgenv().TIESAS)
 	
 	--require(script.Parent.FUNCTIONS).refreshlist()
 	--require(script.Parent.FUNCTIONS).refresharea()
 	
 	--getgenv().ThemeManager:init(script.Parent)
 end
-local function EXEKBZ_routine() -- Routine: StarterGui.YARHM.Forsaken
+local function EXEKBZ_routine() -- Routine: StarterGui.TIESAS.Forsaken
     local script = Instance.new("LocalScript")
     script.Name = "Forsaken"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local req = require
     local require = function(obj)
         local routine = routine_module_scripts[obj]
@@ -4953,15 +5004,15 @@ local function EXEKBZ_routine() -- Routine: StarterGui.YARHM.Forsaken
 	module.gameId = 6331902150
 	module.Name = "Forsaken"
 	
-	local fu = require(getgenv().YARHM.FUNCTIONS)
+	local fu = require(getgenv().TIESAS.FUNCTIONS)
 	if (module.gameId ~= game.GameId) then
 		table.insert(module, {
 			Type = "Text",
-			Args = {"YARHM now includes an official <font color='#FFFF00'>Forsaken</font> module!"}
+			Args = {"TIESAS now includes an official <font color='#FFFF00'>Forsaken</font> module!"}
 		})
 		table.insert(module, {
 			Type = "Text",
-			Args = {"<font size='10'>To use, run YARHM on Forsaken.</font>"}
+			Args = {"<font size='10'>To use, run TIESAS on Forsaken.</font>"}
 		})
 		repeat task.wait() until getgenv().Modules
 		getgenv().Modules[4] = module
@@ -5285,10 +5336,10 @@ local function EXEKBZ_routine() -- Routine: StarterGui.YARHM.Forsaken
 	repeat task.wait() until getgenv().Modules
 	getgenv().Modules[4] = module
 end
-local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
+local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
     local script = Instance.new("LocalScript")
     script.Name = "Murder Mystery 2"
-    script.Parent = Converted["_YARHM"]
+    script.Parent = Converted["_TIESAS"]
     local req = require
     local require = function(obj)
         local routine = routine_module_scripts[obj]
@@ -5302,7 +5353,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	local module = {}
 	module["gameId"] = 66654135
 	
-	local fu = require(getgenv().YARHM.FUNCTIONS)
+	local fu = require(getgenv().TIESAS.FUNCTIONS)
 	local espindc = require(script.Parent.ESPIndicator)
 	
 	
@@ -5488,7 +5539,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 								ArrowShow        = true,
 								ArrowMinDistance       = 999999,           
 								ArrowSize         = UDim2.new(0,40,0,40),
-								LabelText         = "Murderer",
+								LabelText         = "Asesino",
 								ShowLabel         = true,
 								GroupName         = "players"
 							})
@@ -5520,14 +5571,11 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	
 	
 	if not game.ReplicatedStorage:WaitForChild("Remotes", 5) then
-		fu.dialog("Not MM2", "Looks like this game isn't MM2. Do you want to load the module anyway?", {"Load", "No"})
+		fu.dialog("MM2 no detectado", "No se han encontrado los datos de Murder Mystery 2.", {"Cerrar"})
 	
-		if fu.waitfordialog() == "No" then
-			fu.closedialog()
-			fu.notification("MM2 will not be loaded until you rejoin.", Color3.fromRGB(255, 0, 0), "x")
-			return
-		end	
+		fu.waitfordialog()
 		fu.closedialog()
+		return
 	else
 		game.ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Gameplay"):WaitForChild("PlayerDataChanged", 5).OnClientEvent:Connect(function(data)
 			playerData = data
@@ -5618,12 +5666,12 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	-- Player ESP
 	workspace.ChildAdded:Connect(function(ch)
 		if isMapModel(ch) and playerESP then
-			fu.notification("Map has loaded, waiting for roles...")
+			fu.notification("Mapa cargado. Esperando a que se asignen los roles...")
 			task.spawn(function()
 				repeat task.wait(0.5) until not ch.Parent or findMurderer() or findSheriff()
 				if ch.Parent then
 					reloadESP()
-					fu.notification("Player ESP reloaded.")
+					fu.notification("ESP de jugadores actualizado.")
 				end
 			end)
 		end
@@ -5631,7 +5679,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	
 	workspace.ChildRemoved:Connect(function(ch)
 		if isMapModel(ch) and playerESP then
-			fu.notification("Game ended, removing Player ESPs.")
+			fu.notification("La ronda ha terminado. Limpiando los ESP.")
 			playerData = {}
 			espcontainer:ClearAllGroups()
 		end
@@ -5645,11 +5693,11 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 				AccentColor    =  Color3.new(1, 0, 0.0156863),
 				ArrowShow        = false,
 				ShowLabel         = true,
-				LabelText         = "Trap",
+				LabelText         = "Trampa",
 				GroupName         = "trap"
 			})
 	
-			fu.notification("Murderer has placed a trap!")
+			fu.notification("El asesino ha colocado una trampa.")
 		end
 	
 		if gunDropESP and ch.Name == "GunDrop" then
@@ -5658,7 +5706,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 				ArrowShow        = true,
 				ArrowMinDistance       = 999999,      
 				ArrowSize         = UDim2.new(0,40,0,40),
-				LabelText         = "Dropped gun!",
+				LabelText         = "Arma caída",
 				ShowLabel         = true,
 				GroupName         = "gun"
 			})
@@ -5678,12 +5726,12 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 			--bguiclone.Adornee = ch
 			--bguiclone.Enabled = true
 			--bguiclone.Name = "DGBGUIClone"
-			fu.notification("Gun has been dropped! Find a yellow highlight.")
+			fu.notification("El arma ha caído. Está marcada en amarillo.")
 			if autoGetDroppedGun then
-				fu.notification("Auto get dropped gun - Cooling down...")
+				fu.notification("Recogida automática del arma en proceso...")
 				task.wait(1)
 				local droppedGun = findDroppedGun()
-				if not droppedGun then fu.notification("No dropped gun to be teleported to.") return end
+				if not droppedGun then fu.notification("No hay ningún arma caída.") return end
 				local previousPosition = localplayer.Character:GetPivot()
 				localplayer.Character:MoveTo(droppedGun.Position)
 				localplayer.Backpack.ChildAdded:Wait()
@@ -5695,11 +5743,11 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	workspace.DescendantRemoving:Connect(function(ch)
 		if gunDropESP and ch.Name == "GunDrop" then
 			espcontainer:RemoveGroup("gun")
-			fu.notification("Someone has took the dropped gun.")
+			fu.notification("Alguien ha recogido el arma.")
 			task.wait(1)
 			local hero = findSheriff()
 			if hero then
-				fu.notification("The hero is " .. hero.DisplayName .. ".")
+				fu.notification("El héroe es " .. hero.DisplayName .. ".")
 			end
 			reloadESP()
 			--if playerESP then
@@ -5726,7 +5774,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 			--					local mbgui = script.Parent.MurdererBGUI:Clone()
 			--					mbgui.Enabled = true
 			--					mbgui.Name = "AppliedMurdererBGUI"
-			--					mbgui.Parent = getgenv().YARHM
+			--					mbgui.Parent = getgenv().TIESAS
 			--					mbgui.Adornee = character
 			--					a.FillColor = Color3.fromRGB(255,0,0)
 			--					a.OutlineColor = Color3.fromRGB(255,0,0)
@@ -5806,29 +5854,29 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	local function getPredictedPosition(player, shootOffset)
 		local usingBasicPred = not predictionAIEngine
 		if predictionOngoing then
-			fu.notification("Cancelling AI prediction, using basic prediction.")
+			fu.notification("Cancelando la predicción avanzada; se usará la predicción básica.")
 			usingBasicPred = true
 		end
 		local ogplayer = player
 		pcall(function()
 			player = player.Character
-			if not player.Character then fu.notification("No murderer to predict position.") return end
+			if not player.Character then fu.notification("No hay ningún asesino cuya posición se pueda predecir.") return end
 		end)
 		local playerHRP = player:FindFirstChild("UpperTorso")
 		local playerHum = player:FindFirstChild("Humanoid")
 		if not playerHRP or not playerHum then
-			return Vector3.new(0,0,0), "Could not find the player's HumanoidRootPart."
+			return Vector3.new(0,0,0), "No se ha podido encontrar el torso del jugador."
 		end
 	
 		local playerPosition = playerHRP.Position
 	
 	
-		if predictionAIEngine and not usingBasicPred and not predictionCooldown and getgenv().YARHMNetwork_predictPos then
+		if predictionAIEngine and not usingBasicPred and not predictionCooldown and getgenv().TIESASNetwork_predictPos then
 			if (playerPosition - localplayer.Character:FindFirstChild("UpperTorso").Position).Magnitude > 20 then
-				fu.notification("Calculating trajectory...")
+				fu.notification("Calculando la trayectoria...")
 				predictionCooldown = true
 				predictionOngoing = true
-				local predictedPosition = getgenv().YARHMNetwork_predictPos(ogplayer)
+				local predictedPosition = getgenv().TIESASNetwork_predictPos(ogplayer)
 				predictionOngoing = false
 				task.spawn(function()
 					task.wait(5)
@@ -5836,10 +5884,10 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 				end)
 				return predictedPosition
 			else
-				fu.notification("Murderer is too close for trajectory prediction. Reverting to basic prediction.")
+				fu.notification("El asesino está demasiado cerca; se usará la predicción básica.")
 			end
-		elseif predictionAIEngine and not getgenv().YARHMNetwork.predictPos then
-			fu.notification("YARHM AI Engine is not available. Reverting to basic prediction.")	
+		elseif predictionAIEngine and not getgenv().TIESASNetwork.predictPos then
+			fu.notification("La predicción avanzada no está disponible; se usará la básica.")	
 		end
 	
 	
@@ -5865,11 +5913,11 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	task.spawn(function()
 		while task.wait(1) do
 			if findSheriff() == localplayer and autoShooting then
-				fu.notification("Auto-shooting started.")
+				fu.notification("Disparo automático iniciado.")
 				repeat
 					task.wait(0.1)
 					local murderer = findMurderer()
-					if not murderer then fu.notification("No murderer.") continue end
+					if not murderer then fu.notification("No se ha encontrado al asesino.") continue end
 					local murdererPosition = murderer.Character.HumanoidRootPart.Position
 					local characterRootPart = localplayer.Character.HumanoidRootPart
 					local rayDirection = murdererPosition - characterRootPart.Position
@@ -5880,19 +5928,19 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	
 					local hit = workspace:Raycast(characterRootPart.Position, rayDirection, raycastParams)
 					if not hit or hit.Instance.Parent == murderer.Character then -- Check if nothing collides or if it collides with the murderer
-						fu.notification("Auto-shooting!")
+						fu.notification("¡Disparo automático!")
 						if not localplayer.Character:FindFirstChild("Gun") then
 							local hum = localplayer.Character:FindFirstChild("Humanoid")
 							if localplayer.Backpack:FindFirstChild("Gun") then
 								localplayer.Character:FindFirstChild("Humanoid"):EquipTool(localplayer.Backpack:FindFirstChild("Gun"))
 							else
-								fu.notification("You don't have the gun..?")
+								fu.notification("No tienes el arma.")
 								return
 							end
 						end
 						local murdererHRP = murderer.Character:FindFirstChild("HumanoidRootPart")
 						if not murdererHRP then
-							fu.notification("Could not find the murderer's HumanoidRootPart.")
+							fu.notification("No se ha podido localizar al asesino.")
 							return
 						end
 	
@@ -5917,34 +5965,34 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	
 	table.insert(module, {
 		Type = "Text",
-		Args = {"ESPs"}
+		Args = {"VISIÓN DE PARTIDA"}
 	})
 	
 	
 	table.insert(module, {
 		Type = "ButtonGrid",
 		Toggleable = true,
-		DefaultStates = autoFeaturesEnabled and {"Players", "Dropped_Gun", "Traps"} or nil,
+		DefaultStates = autoFeaturesEnabled and {"Jugadores", "Arma_caida", "Trampas"} or nil,
 		Args = {2, {
-			Players = function()
+			Jugadores = function()
 				if playerESP then
 					playerESP = false
 					espcontainer:RemoveGroup("players")
 				else
 					if not isRoundActive() then
-						fu.notification("You need to be in an active match to enable MM2 ESPs.")
+						fu.notification("Necesitas estar en una partida activa para usar los ESP.")
 						return
 					end
 					playerESP = true
 					if not findMurderer() or not findSheriff() then
-						fu.notification("No roles yet. Waiting for roles...")
+						fu.notification("Todavía no hay roles. Esperando...")
 						repeat task.wait(0.5) until not getMap() or findSheriff() or findMurderer()
 					end
 					if getMap() then reloadESP() end
 				end
 			end,
 	
-			Dropped_Gun = function()
+			Arma_caida = function()
 				if gunDropESP then
 					gunDropESP = false
 					espcontainer:RemoveGroup("gun")
@@ -5958,17 +6006,17 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 							ArrowShow        = true,
 							ArrowMinDistance       = 999999,      
 							ArrowSize         = UDim2.new(0,40,0,40),
-							LabelText         = "Dropped gun!",
+							LabelText         = "Arma caída",
 							ShowLabel         = true,
 							GroupName         = "gun"
 						})
-						fu.notification("Gun has been dropped! Find a yellow highlight.")
+						fu.notification("El arma caída está marcada en amarillo.")
 					end
 	
 				end
 			end,
 	
-			Traps = function()
+			Trampas = function()
 				if trapDetection then
 					trapDetection = false
 					espcontainer:RemoveGroup("trap")
@@ -5981,7 +6029,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 								AccentColor    =  Color3.new(1, 0, 0),
 								ArrowShow        = false,
 								ShowLabel         = true,
-								LabelText         = "Trap",
+								LabelText         = "Trampa",
 								GroupName         = "trap"
 							})
 						end
@@ -6006,7 +6054,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 				ArrowShow = true,
 				ArrowMinDistance = 999999,
 				ArrowSize = UDim2.new(0, 40, 0, 40),
-				LabelText = "Dropped gun!",
+				LabelText = "Arma caída",
 				ShowLabel = true,
 				GroupName = "gun"
 			})
@@ -6019,37 +6067,37 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 					AccentColor = Color3.fromRGB(255, 167, 174),
 					ArrowShow = false,
 					ShowLabel = true,
-					LabelText = "Trap",
+					LabelText = "Trampa",
 					GroupName = "trap"
 				})
 			end
 		end
 
-		fu.notification("Players ESP, dropped gun ESP and traps ESP activated.")
+		fu.notification("ESP de jugadores, arma caída y trampas activados.")
 	end)
 	
 	table.insert(module, {
 		Type = "Toggle",
-		Args = {"Hide my own ESP", function(Self, state)
+		Args = {"Ocultar mi propio ESP", function(Self, state)
 			hideMeEsp = state
 			reloadESP()
 		end,}
 	})
 	table.insert(module, {
 		Type = "Text",
-		Args = {"Tools"}
+		Args = {"ACCIÓN CONTEXTUAL"}
 	})
 	
 	local instakillshoot = false
 	local function shootMurderer()
 			if findSheriff() ~= localplayer then 
-				fu.notification("You're not sheriff/hero.") 
+				fu.notification("No eres sheriff ni héroe.") 
 				return 
 			end
 	
 			local murderer = findMurderer() or findSheriffThatsNotMe()
 			if not murderer then
-				fu.notification("No murderer (or sheriff) to shoot.")
+				fu.notification("No se ha encontrado al asesino.")
 				return
 			end
 	
@@ -6058,14 +6106,14 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 				if localplayer.Backpack:FindFirstChild("Gun") then
 					hum:EquipTool(localplayer.Backpack:FindFirstChild("Gun"))
 				else
-					fu.notification("You don't have the gun..?")
+					fu.notification("No tienes el arma.")
 					return
 				end
 			end
 	
 			local murdererHRP = murderer.Character:FindFirstChild("HumanoidRootPart")
 			if not murdererHRP then
-				fu.notification("Could not find the murderer's HumanoidRootPart.")
+				fu.notification("No se ha podido localizar al asesino.")
 				return
 			end
 	
@@ -6101,7 +6149,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 		if findMurderer() ~= localplayer then 
 			if silent then return end
 	
-			fu.notification("You're not murderer.") 
+			fu.notification("No eres el asesino.") 
 			return 
 		end
 	
@@ -6112,7 +6160,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 			else
 				if silent then return end
 	
-				fu.notification("You don't have the knife..?")
+				fu.notification("No tienes el cuchillo.")
 				return
 			end
 		end
@@ -6122,14 +6170,14 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 		if not NearestPlayer or not NearestPlayer.Character then
 			if silent then return end
 	
-			fu.notification("Can't find a player!?")
+			fu.notification("No se ha encontrado ningún jugador vivo.")
 			return
 		end
 		local nearestHRP = NearestPlayer.Character:FindFirstChild("HumanoidRootPart")
 		if not nearestHRP then
 			if silent then return end
 	
-			fu.notification("Can't find the player's pivot.")
+			fu.notification("No se ha podido localizar al jugador.")
 		end
 	
 		-- nearestHRP.Anchored = true
@@ -6162,16 +6210,16 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	end)
 	table.insert(module, {
 		Type = "Button",
-		Args = {"SHOOT", function()
+		Args = {"ATACAR", function()
 			if not isRoundActive() then
-				fu.notification("You need to be in an active match to use SHOOT.")
+				fu.notification("Necesitas estar en una partida activa para atacar.")
 				return
 			end
 
 			local character = localplayer.Character
 			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 			if not character or not humanoid or humanoid.Health <= 0 then
-				fu.notification("You need to be alive to use SHOOT.")
+				fu.notification("Necesitas estar vivo para atacar.")
 				return
 			end
 
@@ -6180,7 +6228,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 			elseif findMurderer() == localplayer then
 				knifeThrow()
 			else
-				fu.notification("SHOOT is available when you're sheriff, hero, or murderer.")
+				fu.notification("ATACAR está disponible cuando seas sheriff, héroe o asesino.")
 			end
 		end}
 	})
@@ -6189,7 +6237,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	
 	table.insert(module, {
 		Type = "Toggle",
-		Args = {"Auto knife throw", function(Self, tog)
+		Args = {"Lanzamiento automático de cuchillo", function(Self, tog)
 			loopThrow = tog
 		end}
 	})
@@ -6204,45 +6252,94 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	
 	table.insert(module, {
 		Type = "Input",
-		Args = {"Shoot position offset", "Set", function(Self, text)
-			if not tonumber(text) then fu.notification("Not a valid number.") return end
+		Args = {"Predicción de movimiento", "Aplicar", function(Self, text)
+			if not tonumber(text) then fu.notification("Introduce un número válido.") return end
 	
 			if tonumber(text) > 5 then
-				fu.notification("An offset with a multiplier of 5 might not at all shoot the murderer!")
+				fu.notification("Un valor superior a 5 puede reducir la precisión.")
 			end
 			if tonumber(text) < 0 then
-				fu.notification("An offset with a negative multiplier will make a shot BEHIND the murderer's walk direction.")
+				fu.notification("Un valor negativo apuntará detrás del objetivo.")
 			end
 			shootOffset = tonumber(text)
-			fu.notification("Offset has been set.")
+			fu.notification("Predicción actualizada.")
 		end,}
 	})
 	
 	table.insert(module, {
 		Type = "Input",
-		Args = {"Offset-to-ping multiplier", "Set", function(Self, text)
-			if not tonumber(text) then fu.notification("Not a valid number.") return end
+		Args = {"Ajuste según el ping", "Aplicar", function(Self, text)
+			if not tonumber(text) then fu.notification("Introduce un número válido.") return end
 	
 			if tonumber(text) > 5 then
-				fu.notification("An offset with a multiplier of 5 might not at all shoot the murderer!")
+				fu.notification("Un valor superior a 5 puede reducir la precisión.")
 			end
 			if tonumber(text) < 0 then
-				fu.notification("An offset with a negative multiplier will make a shot BEHIND the murderer's walk direction.")
+				fu.notification("El ajuste de ping no puede ser negativo.")
 			end
 			offsetToPingMult = tonumber(text)
-			fu.notification("Offset has been set.")
+			fu.notification("Ajuste de ping actualizado.")
 		end,}
 	})
 	
 	table.insert(module, {
 		Type = "Text",
-		Args = {"Shoot offset re-aims the gun/knife shoot/throw to the character's predicted position. Recommended is 2.8"}
+		Args = {"La predicción adelanta el disparo o cuchillo según el movimiento. Recomendado: 2.8."}
 	})
 	
 	table.insert(module, {
 		Type = "Text",
-		Args = {"Offset-to-ping multiplier allows the offset to change dynamically with latency/ping. The default is 1 (aka no adjustment)"}
+		Args = {"El ajuste de ping adapta la predicción a la latencia. Valor predeterminado: 1."}
 	})
+
+	if true then
+		table.insert(module, {
+			Type = "Text",
+			Args = {"PERSONALIZACIÓN"}
+		})
+
+		table.insert(module, {
+			Type = "Range",
+			Args = {"Tamaño del menú", 100, 140, 4, function(Self, value)
+				local scale = math.clamp(value / 100, 0.65, 1.4)
+				getgenv().TIESAS_MENU_SCALE = scale
+				getgenv().TIESAS.Menu.UIScale.Scale = scale
+			end}
+		})
+
+		table.insert(module, {
+			Type = "Range",
+			Args = {"Altura de los botones", 34, 60, 2, function(Self, value)
+				local height = math.clamp(value, 24, 60)
+				getgenv().TIESAS_BUTTON_HEIGHT = height
+				for _, object in ipairs(getgenv().TIESAS.Menu.Area.Area:GetDescendants()) do
+					if object:IsA("UIGridLayout") and object:GetAttribute("TiesasResizableGrid") then
+						object.CellSize = UDim2.new(object.CellSize.X.Scale, object.CellSize.X.Offset, 0, height)
+					elseif object:IsA("TextButton") and object:GetAttribute("TiesasResizableButton") then
+						object.Size = UDim2.new(object.Size.X.Scale, object.Size.X.Offset, 0, height)
+					end
+				end
+			end}
+		})
+
+		table.insert(module, {
+			Type = "Range",
+			Args = {"Tamaño del botón del menú", 60, 110, 2, function(Self, value)
+				getgenv().TIESAS_MENU_BUTTON_SIZE = math.clamp(value, 40, 110)
+			end}
+		})
+
+		table.insert(module, {
+			Type = "Text",
+			Args = {"Los tamaños se aplican al instante. El tamaño del botón del menú se verá al minimizarlo."}
+		})
+
+		repeat task.wait() until getgenv().Modules
+		getgenv().Modules[1] = module
+		fu.refreshlist()
+		fu.refresharea()
+		return
+	end
 	
 	
 	
@@ -6263,7 +6360,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	--				repeat
 	--					task.wait(0.1)
 	--					local murderer = findMurderer() or findSheriffThatsNotMe()
-	--					if not murderer then warn("[YARHM] > MM2 Autoshoot - No murderer.") continue end
+	--					if not murderer then warn("[TIESAS] > MM2 Autoshoot - No murderer.") continue end
 	--					local murdererPosition = murderer.Character.HumanoidRootPart.Position
 	--					local characterRootPart = localplayer.Character.HumanoidRootPart
 	--					local rayDirection = (murdererPosition - characterRootPart.Position).Unit * 50
@@ -6382,7 +6479,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 				if sher then sherName = sher.Name end
 				local message = string.format([[Murderer: %s |
 		Sheriff: %s |
-		<<YARHM>>]], murdName, sherName)
+		<<TIESAS>>]], murdName, sherName)
 				textchannel:SendAsync(message)
 			end
 		end,}
@@ -6842,7 +6939,7 @@ local function XXZOB_routine() -- Routine: StarterGui.YARHM.Murder Mystery 2
 	getgenv().Modules[3] = module
 	fu.refreshlist()
 end
-local function ONOAH_routine() -- Routine: StarterGui.YARHM.Open.InitOpen
+local function ONOAH_routine() -- Routine: StarterGui.TIESAS.Open.InitOpen
     local script = Instance.new("LocalScript")
     script.Name = "InitOpen"
     script.Parent = Converted["_Open"]
@@ -6879,7 +6976,7 @@ local function ONOAH_routine() -- Routine: StarterGui.YARHM.Open.InitOpen
 	--	Transparency = 1
 	--}):Play()
 end
-local function JFQXCG_routine() -- Routine: StarterGui.YARHM.Open.OnClick
+local function JFQXCG_routine() -- Routine: StarterGui.TIESAS.Open.OnClick
     local script = Instance.new("LocalScript")
     script.Name = "OnClick"
     script.Parent = Converted["_Open"]
@@ -6918,14 +7015,14 @@ local function JFQXCG_routine() -- Routine: StarterGui.YARHM.Open.OnClick
 		if clickCount == 3 then
 			-- Triple-click detected
 	
-			ts:Create(getgenv().YARHM.Menu, TweenInfo.new(0.7, Enum.EasingStyle.Back, Enum.EasingDirection.Out), 
+			ts:Create(getgenv().TIESAS.Menu, TweenInfo.new(0.7, Enum.EasingStyle.Back, Enum.EasingDirection.Out), 
 				{Position = UDim2.fromScale(0.499, 0.041), Size = UDim2.fromOffset(441, 268)}
 			):Play()
 		end
 	end)
 	
 end
-local function EJGX_routine() -- Routine: StarterGui.YARHM.Open.Resizer
+local function EJGX_routine() -- Routine: StarterGui.TIESAS.Open.Resizer
     local script = Instance.new("LocalScript")
     script.Name = "Resizer"
     script.Parent = Converted["_Open"]
@@ -7013,7 +7110,7 @@ local function EJGX_routine() -- Routine: StarterGui.YARHM.Open.Resizer
 	userInputService.InputChanged:Connect(onInputChanged)
 	
 end
-local function FRPPL_routine() -- Routine: StarterGui.YARHM.FloatingButton.Keybinding
+local function FRPPL_routine() -- Routine: StarterGui.TIESAS.FloatingButton.Keybinding
     local script = Instance.new("LocalScript")
     script.Name = "Keybinding"
     script.Parent = Converted["_FloatingButton"]
@@ -7029,7 +7126,7 @@ local function FRPPL_routine() -- Routine: StarterGui.YARHM.FloatingButton.Keybi
 
 	
 end
-local function VOBA_routine() -- Routine: StarterGui.YARHM.FloatingButton.Invisible
+local function VOBA_routine() -- Routine: StarterGui.TIESAS.FloatingButton.Invisible
     local script = Instance.new("LocalScript")
     script.Name = "Invisible"
     script.Parent = Converted["_FloatingButton"]
@@ -7080,7 +7177,7 @@ local function VOBA_routine() -- Routine: StarterGui.YARHM.FloatingButton.Invisi
 	--	holding = false
 	--end)
 end
-local function SZSARYI_routine() -- Routine: StarterGui.YARHM.AddCustomModule.Add.LocalScript
+local function SZSARYI_routine() -- Routine: StarterGui.TIESAS.AddCustomModule.Add.LocalScript
     local script = Instance.new("LocalScript")
     script.Name = "LocalScript"
     script.Parent = Converted["_Add"]
@@ -7135,7 +7232,7 @@ local function SZSARYI_routine() -- Routine: StarterGui.YARHM.AddCustomModule.Ad
 	task.wait(1.5)
 	if game.gameId == 5794311181 then loadModule("https://yarhm.mhi.im/static/cnasim.yrmdl") end -- CNA Simulator
 end
-local function UVBTWP_routine() -- Routine: StarterGui.YARHM.AddCustomModule.Cancel.LocalScript
+local function UVBTWP_routine() -- Routine: StarterGui.TIESAS.AddCustomModule.Cancel.LocalScript
     local script = Instance.new("LocalScript")
     script.Name = "LocalScript"
     script.Parent = Converted["_Cancel"]
@@ -7160,7 +7257,7 @@ local function UVBTWP_routine() -- Routine: StarterGui.YARHM.AddCustomModule.Can
 		}):Play()
 	end)
 end
-local function HCWF_routine() -- Routine: StarterGui.YARHM.Menu.UIStroke.UIGradient.Animator
+local function HCWF_routine() -- Routine: StarterGui.TIESAS.Menu.UIStroke.UIGradient.Animator
     local script = Instance.new("LocalScript")
     script.Name = "Animator"
     script.Parent = Converted["_UIGradient4"]
@@ -7182,7 +7279,7 @@ local function HCWF_routine() -- Routine: StarterGui.YARHM.Menu.UIStroke.UIGradi
 			Rotation = -180
 		}):Play()
 end
-local function AWDPHWS_routine() -- Routine: StarterGui.YARHM.Menu.CloseArea.CloseOpen
+local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.CloseOpen
     local script = Instance.new("LocalScript")
     script.Name = "CloseOpen"
     script.Parent = Converted["_CloseArea"]
@@ -7303,7 +7400,8 @@ local function AWDPHWS_routine() -- Routine: StarterGui.YARHM.Menu.CloseArea.Clo
 		}):Play()
 		springing = true
 		setSpringPosGoal(closedLastPos)
-		setSpringSizeGoal(UDim2.fromOffset(60, 60))
+		local buttonSize = getgenv().TIESAS_MENU_BUTTON_SIZE or 60
+		setSpringSizeGoal(UDim2.fromOffset(buttonSize, buttonSize))
 		--script.Parent.ZIndex = script.Parent.ZIndex - 2
 		if not menu.Area:FindFirstChildWhichIsA("UICorner") then
 			Instance.new("UICorner", menu.Area)
@@ -7370,7 +7468,8 @@ local function AWDPHWS_routine() -- Routine: StarterGui.YARHM.Menu.CloseArea.Clo
 			--	end
 			--end)
 	
-			setSpringSizeGoal(UDim2.fromOffset(60, 60))
+			local buttonSize = getgenv().TIESAS_MENU_BUTTON_SIZE or 60
+			setSpringSizeGoal(UDim2.fromOffset(buttonSize, buttonSize))
 			setSpringPosGoal(UDim2.new(closedLastPos.X.Scale, closedLastPos.X.Offset, closedLastPos.Y.Scale, closedLastPos.Y.Offset))
 			menu.Area.UICorner.CornerRadius = UDim.new(0, 16)
 			task.delay(0.25, function() menu.List.Visible = false end)
@@ -7483,7 +7582,7 @@ local function AWDPHWS_routine() -- Routine: StarterGui.YARHM.Menu.CloseArea.Clo
 	script.Parent.AllowForSpring.Event:Wait()
 	springing = true
 end
-local function VTLALB_routine() -- Routine: StarterGui.YARHM.Menu.List.AutoSetup
+local function VTLALB_routine() -- Routine: StarterGui.TIESAS.Menu.List.AutoSetup
     local script = Instance.new("LocalScript")
     script.Name = "AutoSetup"
     script.Parent = Converted["_List"]
@@ -7538,7 +7637,7 @@ local function VTLALB_routine() -- Routine: StarterGui.YARHM.Menu.List.AutoSetup
 	--	--end
 	--end)
 end
-local function TVLRH_routine() -- Routine: StarterGui.YARHM.Menu.List.AddCustomModule.LocalScript
+local function TVLRH_routine() -- Routine: StarterGui.TIESAS.Menu.List.AddCustomModule.LocalScript
     local script = Instance.new("LocalScript")
     script.Name = "LocalScript"
     script.Parent = Converted["_AddCustomModule1"]
@@ -7563,7 +7662,7 @@ local function TVLRH_routine() -- Routine: StarterGui.YARHM.Menu.List.AddCustomM
 		}):Play()
 	end)
 end
-local function KUFNO_routine() -- Routine: StarterGui.YARHM.FloatingButtonSetting.ControlBarContainer.ControlBar.Visibility.LocalScript
+local function KUFNO_routine() -- Routine: StarterGui.TIESAS.FloatingButtonSetting.ControlBarContainer.ControlBar.Visibility.LocalScript
     local script = Instance.new("LocalScript")
     script.Name = "LocalScript"
     script.Parent = Converted["_Visibility"]
@@ -7578,10 +7677,10 @@ local function KUFNO_routine() -- Routine: StarterGui.YARHM.FloatingButtonSettin
 
 
 	script.Parent.MouseButton1Click:Connect(function()
-		getgenv().YARHMFUNCTIONS.ftToggleVisibility()
+		getgenv().TIESASFUNCTIONS.ftToggleVisibility()
 	end)
 end
-local function XLYNZG_routine() -- Routine: StarterGui.YARHM.FloatingButtonSetting.ControlBarContainer.ControlBar.Lock.LocalScript
+local function XLYNZG_routine() -- Routine: StarterGui.TIESAS.FloatingButtonSetting.ControlBarContainer.ControlBar.Lock.LocalScript
     local script = Instance.new("LocalScript")
     script.Name = "LocalScript"
     script.Parent = Converted["_Lock1"]
@@ -7596,10 +7695,10 @@ local function XLYNZG_routine() -- Routine: StarterGui.YARHM.FloatingButtonSetti
 
 
 	script.Parent.MouseButton1Click:Connect(function()
-		getgenv().YARHMFUNCTIONS.ftToggleLock()
+		getgenv().TIESASFUNCTIONS.ftToggleLock()
 	end)
 end
-local function XAPKH_routine() -- Routine: StarterGui.YARHM.FloatingButtonSetting.ControlBarContainer.ControlBar.Exit.LocalScript
+local function XAPKH_routine() -- Routine: StarterGui.TIESAS.FloatingButtonSetting.ControlBarContainer.ControlBar.Exit.LocalScript
     local script = Instance.new("LocalScript")
     script.Name = "LocalScript"
     script.Parent = Converted["_Exit"]
@@ -7614,26 +7713,20 @@ local function XAPKH_routine() -- Routine: StarterGui.YARHM.FloatingButtonSettin
 
 
 	script.Parent.MouseButton1Click:Connect(function()
-		getgenv().YARHMFUNCTIONS.closeFinetuneFB()
+		getgenv().TIESASFUNCTIONS.closeFinetuneFB()
 	end)
 end
 
-coroutine.wrap(WMYX_routine)()
-coroutine.wrap(CEBY_routine)()
 coroutine.wrap(DSZIHQM_routine)()
-coroutine.wrap(EXEKBZ_routine)()
 coroutine.wrap(XXZOB_routine)()
 coroutine.wrap(ONOAH_routine)()
 coroutine.wrap(JFQXCG_routine)()
 coroutine.wrap(EJGX_routine)()
 coroutine.wrap(FRPPL_routine)()
 coroutine.wrap(VOBA_routine)()
-coroutine.wrap(SZSARYI_routine)()
-coroutine.wrap(UVBTWP_routine)()
 coroutine.wrap(HCWF_routine)()
 coroutine.wrap(AWDPHWS_routine)()
 coroutine.wrap(VTLALB_routine)()
-coroutine.wrap(TVLRH_routine)()
 coroutine.wrap(KUFNO_routine)()
 coroutine.wrap(XLYNZG_routine)()
 coroutine.wrap(XAPKH_routine)()
