@@ -5540,10 +5540,14 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local hideMeEsp = false
 	local function reloadESP()
 		espcontainer:RemoveGroup("players")
-		if not playerESP or not isRoundActive() then return end
+		if not playerESP then return end
 
 		local murderer = findMurderer()
 		local sheriff = findSheriff()
+		-- No pintar a todo el lobby de verde. El ESP aparece en cuanto MM2
+		-- entrega al menos uno de los roles, incluso antes de crear el mapa.
+		if not murderer and not sheriff then return end
+
 		for _, player in ipairs(game.Players:GetPlayers()) do
 			if player == localplayer and hideMeEsp then continue end
 			local character = player.Character
@@ -5625,27 +5629,34 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		reloadTrapESP()
 	end
 
-	-- Respaldo para mapas que se replican por partes y no disparan ChildAdded
-	-- cuando CoinContainer/Spawns ya existen. También actualiza los colores si
-	-- cambian el sheriff, el héroe o el murderer durante la ronda.
+	-- Los roles se asignan antes de que aparezca el mapa. Se observan por separado
+	-- para mostrar el ESP durante la cuenta atrás, sin esperar a CoinContainer.
 	task.spawn(function()
 		local observedMap
 		local observedMurderer
 		local observedSheriff
-		while task.wait(0.75) do
+		local ignoreRolesUntil = 0
+		while task.wait(0.25) do
 			local map = getMap()
 			if map ~= observedMap then
+				if observedMap and not map then
+					playerData = {}
+					observedMurderer = nil
+					observedSheriff = nil
+					ignoreRolesUntil = os.clock() + 1
+				end
 				observedMap = map
-				observedMurderer = nil
-				observedSheriff = nil
 				espcontainer:ClearAllGroups()
 				if map then
 					reloadAllESP()
 				end
-			elseif map and playerESP then
+			end
+
+			if os.clock() >= ignoreRolesUntil then
 				local murderer = findMurderer()
 				local sheriff = findSheriff()
-				if murderer ~= observedMurderer or sheriff ~= observedSheriff then
+				if playerESP
+					and (murderer ~= observedMurderer or sheriff ~= observedSheriff) then
 					observedMurderer = murderer
 					observedSheriff = sheriff
 					reloadESP()
@@ -5876,7 +5887,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local function watchPlayerForESP(player)
 		player.CharacterAdded:Connect(function()
 			task.delay(0.5, function()
-				if playerESP and isRoundActive() then
+				if playerESP then
 					reloadESP()
 				end
 			end)
@@ -6150,7 +6161,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				playerESP = not playerESP
 				reloadESP()
 				if playerESP and not isRoundActive() then
-					fu.notification("ESP de jugadores preparado para la próxima ronda.")
+					fu.notification("El ESP aparecerá en cuanto se asignen los roles.")
 				end
 			end,
 
