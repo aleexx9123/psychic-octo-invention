@@ -5384,7 +5384,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	local espcontainer = espindc.new({ArrowEdgePadding = 50, ArrowShowDistanceText = false,})
 	
-	local playerESP = false
+	local playerESP = true
 	local coinAutoCollect = false
 	local autoShooting = false
 	local shootOffset = 2.8
@@ -5396,9 +5396,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local predictionCooldown = false
 	
 	
-	local gunDropESP
-	
-	local trapDetection = false
+	local gunDropESP = true
+
+	local trapDetection = true
 	--local trapESP = Instance.new("Highlight")
 	--trapESP.Name = "TrapESP"
 	--trapESP.FillColor = Color3.fromRGB(255, 112, 10)
@@ -5443,11 +5443,6 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return getMap() ~= nil
 	end
 
-	local autoFeaturesEnabled = isRoundActive()
-	playerESP = autoFeaturesEnabled
-	gunDropESP = autoFeaturesEnabled
-	trapDetection = autoFeaturesEnabled
-	
 	local function findMurderer()
 	
 	
@@ -5543,51 +5538,121 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	
 	local hideMeEsp = false
-	function reloadESP()
-		if not playerESP then return end
+	local function reloadESP()
 		espcontainer:RemoveGroup("players")
-		local listplayers = game.Players:GetChildren()
-		for _, player in ipairs(listplayers) do
+		if not playerESP or not isRoundActive() then return end
+
+		local murderer = findMurderer()
+		local sheriff = findSheriff()
+		for _, player in ipairs(game.Players:GetPlayers()) do
 			if player == localplayer and hideMeEsp then continue end
-			if  player.Character ~= nil then
-				local character = player.Character
-				if true then
-	
-					task.spawn(function()
-						if player == findMurderer() then
-							espcontainer:Add(character, {
-								AccentColor    =  Color3.new(1, 0, 0.0156863),
-								ArrowShow        = true,
-								ArrowMinDistance       = 999999,           
-								ArrowSize         = UDim2.new(0,40,0,40),
-								LabelText         = "Asesino",
-								ShowLabel         = true,
-								GroupName         = "players"
-							})
-						elseif player == findSheriff() then
-							espcontainer:Add(character, {
-								AccentColor    =  Color3.new(0, 0.6, 1),
-								ArrowShow        = false,
-								ShowLabel         = false,
-								GroupName         = "players"
-							})
-						else
-							espcontainer:Add(character, {
-								AccentColor    =  Color3.new(0, 1, 0.0313725),
-								ArrowShow        = false,
-								ShowLabel         = false,
-								GroupName         = "players"
-							})
-						end
-						--if a then
-						--	if not player then return end
-						--	a.Adornee = player.Character or player.CharactedAdded:Wait()
-						--end
-					end)
-				end
+			local character = player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if not character or not humanoid or humanoid.Health <= 0 then continue end
+
+			if player == murderer then
+				espcontainer:Add(character, {
+					AccentColor = Color3.new(1, 0, 0.0156863),
+					ArrowShow = true,
+					ArrowMinDistance = 999999,
+					ArrowSize = UDim2.new(0, 40, 0, 40),
+					LabelText = "Asesino",
+					ShowLabel = true,
+					GroupName = "players"
+				})
+			elseif player == sheriff then
+				espcontainer:Add(character, {
+					AccentColor = Color3.new(0, 0.6, 1),
+					ArrowShow = false,
+					ShowLabel = false,
+					GroupName = "players"
+				})
+			else
+				espcontainer:Add(character, {
+					AccentColor = Color3.new(0, 1, 0.0313725),
+					ArrowShow = false,
+					ShowLabel = false,
+					GroupName = "players"
+				})
 			end
 		end
 	end
+
+	local function reloadGunESP()
+		espcontainer:RemoveGroup("gun")
+		if not gunDropESP or not isRoundActive() then return end
+
+		local droppedGun = findDroppedGun()
+		if droppedGun then
+			espcontainer:Add(droppedGun, {
+				AccentColor = Color3.fromRGB(255, 224, 19),
+				ArrowShow = true,
+				ArrowMinDistance = 999999,
+				ArrowSize = UDim2.new(0, 40, 0, 40),
+				LabelText = "Arma caída",
+				ShowLabel = true,
+				GroupName = "gun"
+			})
+		end
+	end
+
+	local function reloadTrapESP()
+		espcontainer:RemoveGroup("trap")
+		if not trapDetection then return end
+
+		local map = getMap()
+		if not map then return end
+		for _, object in ipairs(map:GetDescendants()) do
+			if object.Name == "Trap"
+				and (object.Parent:IsA("Folder") or object.Parent:IsA("Model")) then
+				if object:IsA("BasePart") then
+					object.Transparency = 0
+				end
+				espcontainer:Add(object, {
+					AccentColor = Color3.fromRGB(255, 80, 90),
+					ArrowShow = false,
+					ShowLabel = true,
+					LabelText = "Trampa",
+					GroupName = "trap"
+				})
+			end
+		end
+	end
+
+	local function reloadAllESP()
+		reloadESP()
+		reloadGunESP()
+		reloadTrapESP()
+	end
+
+	-- Respaldo para mapas que se replican por partes y no disparan ChildAdded
+	-- cuando CoinContainer/Spawns ya existen. También actualiza los colores si
+	-- cambian el sheriff, el héroe o el murderer durante la ronda.
+	task.spawn(function()
+		local observedMap
+		local observedMurderer
+		local observedSheriff
+		while task.wait(0.75) do
+			local map = getMap()
+			if map ~= observedMap then
+				observedMap = map
+				observedMurderer = nil
+				observedSheriff = nil
+				espcontainer:ClearAllGroups()
+				if map then
+					reloadAllESP()
+				end
+			elseif map and playerESP then
+				local murderer = findMurderer()
+				local sheriff = findSheriff()
+				if murderer ~= observedMurderer or sheriff ~= observedSheriff then
+					observedMurderer = murderer
+					observedSheriff = sheriff
+					reloadESP()
+				end
+			end
+		end
+	end)
 	
 	
 	
@@ -5684,53 +5749,46 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	module["Name"] = currentGameName
 	
-	-- Player ESP
+	-- Los estados permanecen activos entre rondas. Cada mapa nuevo reconstruye
+	-- los tres grupos, aunque el script se haya ejecutado desde el lobby.
 	workspace.ChildAdded:Connect(function(ch)
-		if isMapModel(ch) and playerESP then
-			fu.notification("Mapa cargado. Esperando a que se asignen los roles...")
+		if isMapModel(ch) then
 			task.spawn(function()
-				repeat task.wait(0.5) until not ch.Parent or findMurderer() or findSheriff()
-				if ch.Parent then
+				task.wait(0.25)
+				if not ch.Parent then return end
+				reloadAllESP()
+
+				local startedWaiting = os.clock()
+				repeat
+					task.wait(0.4)
+				until not ch.Parent
+					or findMurderer()
+					or findSheriff()
+					or os.clock() - startedWaiting > 12
+
+				if ch.Parent and playerESP then
 					reloadESP()
-					fu.notification("ESP de jugadores actualizado.")
 				end
 			end)
 		end
 	end)
-	
+
 	workspace.ChildRemoved:Connect(function(ch)
-		if isMapModel(ch) and playerESP then
-			fu.notification("La ronda ha terminado. Limpiando los ESP.")
+		if isMapModel(ch) then
 			playerData = {}
 			espcontainer:ClearAllGroups()
 		end
 	end)
-	
+
 	-- Dropped Gun ESP
 	workspace.DescendantAdded:Connect(function(ch)
 		if trapDetection and ch.Name == "Trap" and (ch.Parent:IsA("Folder") or ch.Parent:IsA("Model")) then
-			ch.Transparency = 0
-			espcontainer:Add(ch, {
-				AccentColor    =  Color3.new(1, 0, 0.0156863),
-				ArrowShow        = false,
-				ShowLabel         = true,
-				LabelText         = "Trampa",
-				GroupName         = "trap"
-			})
-	
+			reloadTrapESP()
 			fu.notification("El asesino ha colocado una trampa.")
 		end
-	
+
 		if gunDropESP and ch.Name == "GunDrop" then
-			espcontainer:Add(ch, {
-				AccentColor    =  Color3.new(0.952941, 1, 0.0745098),
-				ArrowShow        = true,
-				ArrowMinDistance       = 999999,      
-				ArrowSize         = UDim2.new(0,40,0,40),
-				LabelText         = "Arma caída",
-				ShowLabel         = true,
-				GroupName         = "gun"
-			})
+			reloadGunESP()
 			--if not script.Parent:FindFirstChild("GunESP") then
 			--	local gunesp = Instance.new("Highlight", script.Parent)
 			--	gunesp.OutlineTransparency = 1
@@ -5765,12 +5823,10 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		if gunDropESP and ch.Name == "GunDrop" then
 			espcontainer:RemoveGroup("gun")
 			fu.notification("Alguien ha recogido el arma.")
-			task.wait(1)
-			local hero = findSheriff()
-			if hero then
-				fu.notification("El héroe es " .. hero.DisplayName .. ".")
-			end
-			reloadESP()
+			task.delay(0.5, function()
+				reloadGunESP()
+				reloadESP()
+			end)
 			--if playerESP then
 			--	for _, v in ipairs(script.Parent:GetChildren()) do
 			--		if v:IsA("Highlight") then
@@ -5816,6 +5872,21 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			--end
 		end
 	end)
+
+	local function watchPlayerForESP(player)
+		player.CharacterAdded:Connect(function()
+			task.delay(0.5, function()
+				if playerESP and isRoundActive() then
+					reloadESP()
+				end
+			end)
+		end)
+	end
+
+	for _, player in ipairs(game.Players:GetPlayers()) do
+		watchPlayerForESP(player)
+	end
+	game.Players.PlayerAdded:Connect(watchPlayerForESP)
 	
 	function getClosestModelToPlayer(player, models)
 		local closestModel = nil
@@ -6073,108 +6144,35 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	table.insert(module, {
 		Type = "ButtonGrid",
 		Toggleable = true,
-		DefaultStates = autoFeaturesEnabled and {"Jugadores", "Arma_caida", "Trampas"} or nil,
+		DefaultStates = {"Jugadores", "Arma_caida", "Trampas"},
 		Args = {2, {
 			Jugadores = function()
-				if playerESP then
-					playerESP = false
-					espcontainer:RemoveGroup("players")
-				else
-					if not isRoundActive() then
-						fu.notification("Necesitas estar en una partida activa para usar los ESP.")
-						return
-					end
-					playerESP = true
-					if not findMurderer() or not findSheriff() then
-						fu.notification("Todavía no hay roles. Esperando...")
-						repeat task.wait(0.5) until not getMap() or findSheriff() or findMurderer()
-					end
-					if getMap() then reloadESP() end
+				playerESP = not playerESP
+				reloadESP()
+				if playerESP and not isRoundActive() then
+					fu.notification("ESP de jugadores preparado para la próxima ronda.")
 				end
 			end,
-	
+
 			Arma_caida = function()
-				if gunDropESP then
-					gunDropESP = false
-					espcontainer:RemoveGroup("gun")
-				else
-					gunDropESP = true
-					if not getMap() then return end
-					local droppedGun = findDroppedGun()
-					if droppedGun then
-						espcontainer:Add(droppedGun, {
-							AccentColor    =  Color3.new(0.952941, 1, 0.0745098),
-							ArrowShow        = true,
-							ArrowMinDistance       = 999999,      
-							ArrowSize         = UDim2.new(0,40,0,40),
-							LabelText         = "Arma caída",
-							ShowLabel         = true,
-							GroupName         = "gun"
-						})
-						fu.notification("El arma caída está marcada en amarillo.")
-					end
-	
-				end
+				gunDropESP = not gunDropESP
+				reloadGunESP()
 			end,
-	
+
 			Trampas = function()
-				if trapDetection then
-					trapDetection = false
-					espcontainer:RemoveGroup("trap")
-				else
-					trapDetection = true
-					for _, v in ipairs(workspace:GetDescendants()) do
-						if v.Name == "Trap" and (v.Parent:IsA("Folder") or v.Parent:IsA("Model")) then
-							v.Transparency = 0
-							espcontainer:Add(v, {
-								AccentColor    =  Color3.new(1, 0, 0),
-								ArrowShow        = false,
-								ShowLabel         = true,
-								LabelText         = "Trampa",
-								GroupName         = "trap"
-							})
-						end
-					end
-				end
+				trapDetection = not trapDetection
+				reloadTrapESP()
 			end,
 		}}
 	})
 
 	task.defer(function()
-		if not autoFeaturesEnabled then
-			fu.notification("Necesitas estar dentro de una partida activa para ejecutar las funciones de MM2.")
-			return
+		reloadAllESP()
+		if isRoundActive() then
+			fu.notification("Todos los ESP están activados.")
+		else
+			fu.notification("Todos los ESP están preparados para la próxima ronda.")
 		end
-
-		reloadESP()
-
-		local droppedGun = findDroppedGun()
-		if droppedGun then
-			espcontainer:Add(droppedGun, {
-				AccentColor = Color3.fromRGB(255, 224, 145),
-				ArrowShow = true,
-				ArrowMinDistance = 999999,
-				ArrowSize = UDim2.new(0, 40, 0, 40),
-				LabelText = "Arma caída",
-				ShowLabel = true,
-				GroupName = "gun"
-			})
-		end
-
-		for _, object in ipairs(workspace:GetDescendants()) do
-			if object.Name == "Trap" and (object.Parent:IsA("Folder") or object.Parent:IsA("Model")) then
-				object.Transparency = 0
-				espcontainer:Add(object, {
-					AccentColor = Color3.fromRGB(255, 167, 174),
-					ArrowShow = false,
-					ShowLabel = true,
-					LabelText = "Trampa",
-					GroupName = "trap"
-				})
-			end
-		end
-
-		fu.notification("ESP de jugadores, arma caída y trampas activados.")
 	end)
 	
 	table.insert(module, {
