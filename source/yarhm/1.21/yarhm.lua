@@ -338,25 +338,14 @@ appRuntime.cleanup(function()
 end)
 
 local function bindGuiButton(guiButton, callback)
-	mobileUiRouter:registerTap(guiButton, callback)
-	local lastNativeActivation = 0
-	local function nativeActivation()
-		if mobileUserInputService.TouchEnabled
-			and (mobileUiRouter.touchCapturedUntil[guiButton] or 0) > os.clock() then
-			return
-		end
-		local now = os.clock()
-		if now - lastNativeActivation < 0.08 then return end
-		lastNativeActivation = now
-		mobileUiSafeCall(callback)
-	end
-	local activatedConnection = appRuntime.track(guiButton.Activated:Connect(nativeActivation))
-	appRuntime.track(guiButton.MouseButton1Click:Connect(nativeActivation))
-	return activatedConnection
+	-- Mantener el evento nativo del original. Delta ya transforma el toque de
+	-- iOS en MouseButton1Click; volver a interpretarlo globalmente rompe los
+	-- botones que también admiten arrastre o pulsación prolongada.
+	return appRuntime.track(guiButton.MouseButton1Click:Connect(callback))
 end
 
 runtimeEnvironment.TIESAS_APP_V6_RUNTIME = appRuntime
-runtimeEnvironment.TIESAS_BUILD_ID = "V6-UI-R3-20260728"
+runtimeEnvironment.TIESAS_BUILD_ID = "V6-UI-ORIGINAL-R4-20260729"
 
 local function notifyBeforeLoad(text)
 	pcall(function()
@@ -2357,9 +2346,9 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 			self._initialPosition = nil
 		end
 
-		local DraggableObject = mobileUserInputService.TouchEnabled
-			and MobileDraggableObject
-			or DraggableObjectf()
+		-- El original usa el mismo DraggableObject para ratón y Touch. Delta
+		-- depende de sus eventos GuiObject.InputBegan/InputChanged nativos.
+		local DraggableObject = DraggableObjectf()
 		FUNCTIONSmodule.DraggableObject = DraggableObject
 		
 		function ClickAndHoldf()
@@ -2461,9 +2450,9 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 			end
 		end
 
-		local ClickAndHold = mobileUserInputService.TouchEnabled
-			and MobileClickAndHold
-			or ClickAndHoldf()
+		-- Restaurado del original: MouseButton1Down inicia la pulsación y
+		-- UserInputService solo observa movimiento/finalización.
+		local ClickAndHold = ClickAndHoldf()
 		function PointSavef()
 			local _=false local function d(...)if _ then print("[PointSave DEBUG]:",...)end end getgenv()._FOLDERS=getgenv()._FOLDERS or{} getgenv()._FILES=getgenv()._FILES or{} isfolder=isfolder or function(_)d("Checking if folder exists:",_) return getgenv()._FOLDERS[_]~=nil end makefolder=makefolder or function(_)d("Creating folder:",_) getgenv()._FOLDERS[_]={} return getgenv()._FOLDERS[_]end isfile=isfile or function(_)d("Checking if file exists:",_) return getgenv()._FILES[_]~=nil end writefile=writefile or function(a,_)d("Writing file:",a,"with content:",_) getgenv()._FILES[a]=_ return getgenv()._FILES[a]end readfile=readfile or function(_)d("Reading file:",_) return getgenv()._FILES[_]end delfile=delfile or function(_)d("Deleting file:",_) getgenv()._FILES[_]=nil end listfiles=listfiles or function(c)d("Listing files in folder:",c) local _=getgenv()._FOLDERS[c] if _ then local a={} for b,_ in pairs(getgenv()._FILES)do if b:sub(1,#c+1)==c.."/"then local _=b:sub(#c+2) d("Found file in folder:",_) table.insert(a,_)end end return a end d("Folder does not exist:",c) return{}end local b={} b.__index=b local c="PointSaveData" local function _()if not isfolder(c)then d("Base folder not found, creating:",c) makefolder(c)else d("Base folder already exists:",c)end end function b.new(a)d("Initializing new PointSave instance for namespace:",a) _() local _=setmetatable({},b) _.namespace=a _.folderPath=c.."/"..a if not isfolder(_.folderPath)then d("Namespace folder does not exist, creating:",_.folderPath) makefolder(_.folderPath)else d("Namespace folder already exists:",_.folderPath)end return _ end function b:set(b,a)local _=self.folderPath.."/"..b..".txt" d("Setting value for key:",b,"->",a) writefile(_,tostring(a))end function b:get(a)local _=self.folderPath.."/"..a..".txt" d("Getting value for key:",a) if isfile(_)then local _=readfile(_) d("Found value for key:",a,"->",_) return _ end d("Key not found:",a) return nil end function b:remove(a)local _=self.folderPath.."/"..a..".txt" d("Removing key:",a) if isfile(_)then delfile(_) d("Removed file for key:",a)else d("File for key does not exist:",a)end end function b:clear()d("Clearing all keys in namespace:",self.namespace) local _=listfiles(self.folderPath) for _,_ in ipairs(_)do local _=self.folderPath.."/".._ if isfile(_)then d("Deleting file:",_) delfile(_)end end end function b.deleteNamespace(a)local b=c.."/"..a d("Deleting namespace:",a) local _=listfiles(b) for _,_ in ipairs(_)do local _=b.."/".._ if isfile(_)then d("Deleting file from namespace:",_) delfile(_)end end getgenv()._FOLDERS[b]=nil d("Deleted folder for namespace:",a)end function b.listNamespaces()d("Listing all namespaces") _() local b={} for a,_ in pairs(getgenv()._FOLDERS)do if a:sub(1,#c+1)==c.."/"then local _=a:sub(#c+2) d("Found namespace:",_) table.insert(b,_)end end return b end return b
 		end
@@ -3567,6 +3556,16 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
     end
     routine_module_scripts[script] = module_script
 end
+do -- Routine Module: StarterGui.TIESAS.Spring
+    local script = Instance.new("ModuleScript")
+    script.Name = "Spring"
+    script.Parent = Converted["_TIESAS"]
+    local function module_script()
+
+		local a=game:GetService("RunService")local b={}function OverDamping(c,d,e,f,g,h)local i=d*d-4*e/c;local j=-1/2;local k=d+math.sqrt(i)local l=d-math.sqrt(i)local m,n=j*k,j*l;local o,p=(n*f-g)/(n-m),(m*f-g)/(m-n)local q=h/e;return{Offset=function(r)return o*math.exp(m*r)+p*math.exp(n*r)+q end,Velocity=function(r)return o*m*math.exp(m*r)+p*n*math.exp(n*r)end,Acceleration=function(r)return o*m*m*math.exp(m*r)+p*n*n*math.exp(n*r)end}end;function CriticalDamping(c,d,e,f,g,h)local s=-d/2;local o,p=f,g-s*f;local q=h/e;return{Offset=function(r)return math.exp(s*r)*(o+p*r)+q end,Velocity=function(r)return math.exp(s*r)*(p*s*r+o*s+p)end,Acceleration=function(r)return s*math.exp(s*r)*(p*s*r+o*s+2*p)end}end;function UnderDamping(c,d,e,f,g,h)local i=d*d-4*e/c;local s=-d/2;local t=math.sqrt(-i)local o,p=f,(g-s*f)/t;local q=h/e;return{Offset=function(r)return math.exp(s*r)*(o*math.cos(t*r)+p*math.sin(t*r))+q end,Velocity=function(r)return-math.exp(s*r)*((o*t-p*s)*math.sin(t*r)+(-p*t-o*s)*math.cos(t*r))end,Acceleration=function(r)return-math.exp(s*r)*((p*t*t+2*o*s*t-p*s*s)*math.sin(t*r)+(o*t*t-2*p*s*t-o*s*s)*math.cos(t*r))end}end;function b.F(u)local f,g,h=u.InitialOffset,u.InitialVelocity,u.ExternalForce;local c,d,e=u.Mass,u.Damping,u.Constant;local i=d*d-4*e/c;if i>0 then return OverDamping(c,d,e,f,g,h)elseif i==0 then return CriticalDamping(c,d,e,f,g,h)else return UnderDamping(c,d,e,f,g,h)end end;local v=b;local w=math.sqrt;local x=math.pi;local y={OFFSET="Offset",VELOCITY="Velocity",ACCELERATION="Acceleration",GOAL="Goal",FREQUENCY="Frequency"}local z=[[.]]local A=[[.]]local u={}local B={}B.__index=function(self,C)local D={[y.OFFSET]=function()local r=tick()-self.StartTick;local E=self.F;local F=E.Offset(r)return F end,[y.VELOCITY]=function()local r=tick()-self.StartTick;local E=self.F;local G=E.Velocity(r)return G end,[y.ACCELERATION]=function()local r=tick()-self.StartTick;local E=self.F;local H=E.Acceleration(r)return H end,[y.GOAL]=function()local I=self.ExternalForce;local J=self.Constant;return I/J end,[y.FREQUENCY]=function()local K=self.Damping;local L=self.Constant;local M=self.Mass;return w(-K*K+4*L/M)/(2*x)end}local N=rawget(self,C)if N~=nil then return N end;local O=D[C]if O~=nil then return O()end;return B[C]end;B.__tostring=function(self)local r=tick()-self.StartTick;local E=self.F;local P=self.AdvancedObjectStringEnabled;local Q;if P==false then Q=string.format(z,E.Offset(r),E.Velocity(r),E.Acceleration(r))elseif P==true then Q=string.format(A,self.Mass,self.Damping,self.Constant,self.Goal,self.Frequency,self.InitialOffset,self.InitialVelocity,self.ExternalForce,self.StartTick,E.Offset(r),E.Velocity(r),E.Acceleration(r))end;return Q end;function u.new(M,K,L,f,g,R)assert(M>0,"Mass for spring system cannot be less than or equal to 0")assert(L>0,"Spring constant for spring system cannot be less than or equal to 0")f=f or 0;g=g or 0;R=R or 0;local S=R*L;local T={Mass=M,Damping=K,Constant=L,InitialOffset=f-R,InitialVelocity=g,ExternalForce=S,AdvancedObjectStringEnabled=false,StartTick=0}setmetatable(T,B)T:Reset()return T end;function u.fromFrequency(M,K,U,f,g,R)assert(M>0,"Mass for spring system cannot be less than or equal to 0")assert(U>0,"Spring frequency for spring system cannot be less than or equal to 0")local L=0.25*M*(4*x*x*U*U+K*K)f=f or 0;g=g or 0;R=R or 0;local S=R*L;local T={Mass=M,Damping=K,Constant=L,InitialOffset=f-R,InitialVelocity=g,ExternalForce=S,AdvancedObjectStringEnabled=false,StartTick=0}setmetatable(T,B)T:Reset()return T end;function B:Reset()self.F=v.F(self)self.StartTick=tick()end;function B:SetExternalForce(V)self.ExternalForce=V;self.InitialOffset=self.Offset-V/self.Constant;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SetGoal(R)self.ExternalForce=R*self.Constant;self.InitialOffset=self.Offset-R;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SetFrequency(U)self.Constant=0.25*self.Mass*(4*x*x*U*U+self.Damping*self.Damping)self.InitialOffset=self.Offset;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SnapToCriticalDamping()self.Damping=2*w(self.Constant/self.Mass)self.InitialOffset=self.Offset;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SetOffset(F,W)self.InitialOffset=F-self.Goal;self.InitialVelocity=W and 0 or self.Velocity;self:Reset()end;function B:AddOffset(F)self.InitialOffset=self.Offset+F;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SetVelocity(G)self.InitialOffset=self.Offset;self.InitialVelocity=G;self:Reset()end;function B:AddVelocity(G)self.InitialOffset=self.Offset;self.InitialVelocity=self.Velocity+G;self:Reset()end;function B:Print()local X=tostring(self)print(X)end;return u
+    end
+    routine_module_scripts[script] = module_script
+end
 do -- Routine Module: StarterGui.TIESAS.Bezier
     local script = Instance.new("ModuleScript")
     script.Name = "Bezier"
@@ -3889,7 +3888,7 @@ local function DSZIHQM_routine() -- Routine: StarterGui.TIESAS.Init
 	script.Parent.Dropdown.Visible = false
 	script.Parent.Dialog.Visible = false
 	require(script.Parent.FUNCTIONS).notification(
-		"UI móvil R3 cargada. Toques y arrastre listos."
+		"UI original R4 cargada. Eventos nativos restaurados."
 	)
 	
 	--require(script.Parent.FUNCTIONS).refreshlist()
@@ -6724,7 +6723,6 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 	
 	local closed = false
 	local springing = false
-	local lastSpringActivity = os.clock()
 	
 	local closing
 	
@@ -6744,8 +6742,6 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 	
 	-- Functions to update spring goals and offsets
 	local function setSpringPosGoal(udim2)
-		springing = true
-		lastSpringActivity = os.clock()
 		MenuPosXScale:SetGoal(udim2.X.Scale)
 		MenuPosYScale:SetGoal(udim2.Y.Scale)
 		MenuPosXOffset:SetGoal(udim2.X.Offset)
@@ -6753,8 +6749,6 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 	end
 	
 	local function setSpringSizeGoal(udim2)
-		springing = true
-		lastSpringActivity = os.clock()
 		MenuSizeXOffset:SetGoal(udim2.X.Offset)
 		MenuSizeYOffset:SetGoal(udim2.Y.Offset)
 	end
@@ -6767,15 +6761,6 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 			menu.Size = UDim2.fromOffset(MenuSizeXOffset.Offset, MenuSizeYOffset.Offset)
 			menu.Rotation = MenuRotation.Offset
 			MenuRotation:SetGoal(0)
-			if os.clock() - lastSpringActivity > 0.45
-				and math.abs(MenuPosXScale.Offset - MenuPosXScale.Goal) < 0.0005
-				and math.abs(MenuPosYScale.Offset - MenuPosYScale.Goal) < 0.0005
-				and math.abs(MenuPosXOffset.Offset - MenuPosXOffset.Goal) < 0.25
-				and math.abs(MenuPosYOffset.Offset - MenuPosYOffset.Goal) < 0.25
-				and math.abs(MenuSizeXOffset.Offset - MenuSizeXOffset.Goal) < 0.25
-				and math.abs(MenuSizeYOffset.Offset - MenuSizeYOffset.Goal) < 0.25 then
-				springing = false
-			end
 		end
 	end))
 	
