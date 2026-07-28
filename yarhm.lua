@@ -2,8 +2,9 @@ local src = ""
 local CoreGui = game:GetService("StarterGui")
 
 pcall(function()
+	local cacheBuster = tostring(os.time()) .. "-" .. tostring(math.random(100000, 999999))
 	src = game:HttpGet(
-		"https://raw.githubusercontent.com/aleexx9123/psychic-octo-invention/main/source/yarhm/1.21/yarhm.lua",
+		"https://raw.githubusercontent.com/aleexx9123/psychic-octo-invention/main/source/yarhm/1.21/yarhm.lua?v=" .. cacheBuster,
 		false
 	)
 end)
