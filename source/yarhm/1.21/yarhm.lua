@@ -8,6 +8,64 @@ local supportedGames = {
 }
 local currentGameName = supportedGames[game.GameId]
 
+-- Un solo runtime gobierna interfaz, ESP y lógica de juego. Esto permite
+-- reejecutar en Delta sin conservar conexiones a RunService/UserInputService
+-- ni menús cuyo nombre fue aleatorizado al moverlos al hidden UI.
+local runtimeEnvironment = getgenv()
+local previousAppRuntime = runtimeEnvironment.TIESAS_APP_V6_RUNTIME
+if type(previousAppRuntime) == "table" and type(previousAppRuntime.stop) == "function" then
+	pcall(previousAppRuntime.stop)
+end
+for _, legacyRuntimeName in ipairs({"TIESAS_MM2_V5_RUNTIME", "TIESAS_MM2_V6_RUNTIME"}) do
+	local legacyRuntime = runtimeEnvironment[legacyRuntimeName]
+	if type(legacyRuntime) == "table" and type(legacyRuntime.stop) == "function" then
+		pcall(legacyRuntime.stop)
+	end
+	runtimeEnvironment[legacyRuntimeName] = nil
+end
+
+local appRuntime = {
+	alive = true,
+	connections = {},
+	cleanups = {},
+}
+
+function appRuntime.track(connection)
+	if connection then
+		table.insert(appRuntime.connections, connection)
+	end
+	return connection
+end
+
+function appRuntime.release(connection)
+	if not connection then return end
+	pcall(function() connection:Disconnect() end)
+	local index = table.find(appRuntime.connections, connection)
+	if index then table.remove(appRuntime.connections, index) end
+end
+
+function appRuntime.cleanup(callback)
+	if type(callback) == "function" then
+		table.insert(appRuntime.cleanups, callback)
+	end
+	return callback
+end
+
+function appRuntime.stop()
+	if not appRuntime.alive then return end
+	appRuntime.alive = false
+	for index = #appRuntime.connections, 1, -1 do
+		pcall(function() appRuntime.connections[index]:Disconnect() end)
+	end
+	for index = #appRuntime.cleanups, 1, -1 do
+		pcall(appRuntime.cleanups[index])
+	end
+	table.clear(appRuntime.connections)
+	table.clear(appRuntime.cleanups)
+end
+
+runtimeEnvironment.TIESAS_APP_V6_RUNTIME = appRuntime
+
 local function notifyBeforeLoad(text)
 	pcall(function()
 		StarterGui:SetCore("SendNotification", {
@@ -43,15 +101,27 @@ else
 	notifyBeforeLoad("Partida de " .. currentGameName .. " detectada. Cargando Tiesas Scripts...")
 end
 
--- Una reejecución en Delta no debe dejar menús, highlights ni conexiones V5
--- duplicadas. El runtime anterior se detiene al iniciar el módulo de MM2.
+-- Limpiar por referencia además de por nombre: gethui puede haber cambiado el
+-- nombre del menú y haberlo movido fuera de los hijos directos de CoreGui.
 pcall(function()
+	local previousGui = runtimeEnvironment.TIESAS
+	if typeof(previousGui) == "Instance" and previousGui.Parent then
+		previousGui:Destroy()
+	end
 	local coreGui = game:GetService("CoreGui")
-	for _, child in ipairs(coreGui:GetChildren()) do
-		if child.Name == "TiesasScripts"
-			or child.Name == "TiesasMM2ESP"
-			or child.Name == "ESPIndicators" then
-			child:Destroy()
+	local roots = {coreGui}
+	if type(gethui) == "function" then
+		local hidden = gethui()
+		if hidden and hidden ~= coreGui then table.insert(roots, hidden) end
+	end
+	for _, root in ipairs(roots) do
+		for _, child in ipairs(root:GetChildren()) do
+			if child.Name == "TiesasScripts"
+				or child.Name == "TiesasMM2ESP"
+				or child.Name == "ESPIndicators"
+				or child:GetAttribute("TiesasAppRoot") then
+				child:Destroy()
+			end
 		end
 	end
 end)
@@ -61,23 +131,12 @@ end)
 local Converted = {
 	["_TIESAS"] = Instance.new("ScreenGui");
 	["_FUNCTIONS"] = Instance.new("ModuleScript");
-	["_Flee the Facility"] = Instance.new("LocalScript");
-	["_Universal"] = Instance.new("LocalScript");
-	["_DraggableObject"] = Instance.new("ModuleScript");
-	["_ClickAndHold"] = Instance.new("ModuleScript");
-	["_Spring"] = Instance.new("ModuleScript");
 	["_Init"] = Instance.new("LocalScript");
-	["_Forsaken"] = Instance.new("LocalScript");
 	["_Murder Mystery 2"] = Instance.new("LocalScript");
-	["_ESPIndicator"] = Instance.new("ModuleScript");
 	["_Bezier"] = Instance.new("ModuleScript");
 	["_PointSave"] = Instance.new("ModuleScript");
 	["_Theme"] = Instance.new("ModuleScript");
-	["_FlyUtility"] = Instance.new("ModuleScript");
 	["_Open"] = Instance.new("TextButton");
-	["_InitOpen"] = Instance.new("LocalScript");
-	["_OnClick"] = Instance.new("LocalScript");
-	["_Resizer"] = Instance.new("LocalScript");
 	["_UICorner"] = Instance.new("UICorner");
 	["_UIPadding"] = Instance.new("UIPadding");
 	["_DropdownFrameSample"] = Instance.new("Frame");
@@ -297,6 +356,10 @@ Converted["_TIESAS"].ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets
 Converted["_TIESAS"].ResetOnSpawn = false
 Converted["_TIESAS"].ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 Converted["_TIESAS"].Name = "TiesasScripts"
+Converted["_TIESAS"]:SetAttribute("TiesasAppRoot", true)
+appRuntime.track(Converted["_TIESAS"].Destroying:Connect(function()
+	appRuntime.stop()
+end))
 Converted["_TIESAS"].Parent = game:GetService("CoreGui")
 
 Converted["_Open"].Font = Enum.Font.Gotham
@@ -1771,12 +1834,217 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 		function DraggableObjectf()
 			local function a(b,c)local d=c.AbsoluteSize;local e=c.AbsolutePosition;local f=b.X.Scale*d.X+b.X.Offset;local g=b.Y.Scale*d.Y+b.Y.Offset;local h=math.clamp(f,0,d.X)local i=math.clamp(g,0,d.Y)local j=UDim2.new(b.X.Scale,h-b.X.Scale*d.X,b.Y.Scale,i-b.Y.Scale*d.Y)return j end;local k=UDim2.new;local l=game:GetService("UserInputService")local m=game:GetService("TweenService")local n={}n.__index=n;function n.new(o,p,q,r)local self={}self.Object=o;self.ToMove=p;self.Smooth=q;self.CallbackOnly=r;self.CanBeDragged=false;self.DragStarted=nil;self.DragEnded=nil;self.Dragged=nil;self.Dragging=false;self.LastPosition=nil;self.Velocity=Vector2.new(0,0)setmetatable(self,n)return self end;function n:Enable()self.CanBeDragged=true;local s=self.Object;local t=self.ToMove;local u=nil;local v=nil;local w=nil;local x=false;local function y(z)local A=z.Position-v;local B=UDim2.new(w.X.Scale,w.X.Offset+A.X,w.Y.Scale,w.Y.Offset+A.Y)if self.CallbackOnly then else B=a(B,self.Object:FindFirstAncestorWhichIsA("ScreenGui"))if(self.Smooth==nil or self.Smooth==true)and self.Smooth~=false then m:Create(t and t or s,TweenInfo.new(0.5,Enum.EasingStyle.Cubic,Enum.EasingDirection.Out),{Position=B}):Play()else local C=t and t or s;C.Position=B end end;return B end;self.InputBegan=s.InputBegan:Connect(function(z)if z.UserInputType==Enum.UserInputType.MouseButton1 or z.UserInputType==Enum.UserInputType.Touch then x=true;local D;D=z.Changed:Connect(function()if z.UserInputState==Enum.UserInputState.End and(self.Dragging or x)then self.Dragging=false;D:Disconnect()if self.DragEnded and not x then self.DragEnded(self.Velocity)end;x=false end end)end end)self.InputChanged=s.InputChanged:Connect(function(z)if z.UserInputType==Enum.UserInputType.MouseMovement or z.UserInputType==Enum.UserInputType.Touch then u=z end end)self.InputChanged2=l.InputChanged:Connect(function(z)if s.Parent==nil then self:Disable()return end;if x then x=false;if self.DragStarted then self.DragStarted()end;self.Dragging=true;v=z.Position;if t then w=t.Position else w=s.Position end;self.LastPosition=z.Position end;if z==u and self.Dragging then local B=y(z)self.Velocity=z.Position-self.LastPosition;self.LastPosition=z.Position;if self.Dragged then self.Dragged(B)end end end)end;function n:Disable()self.CanBeDragged=false;self.InputBegan:Disconnect()self.InputChanged:Disconnect()self.InputChanged2:Disconnect()if self.Dragging then self.Dragging=false;if self.DragEnded then self.DragEnded(self.Velocity)end end end;return n	
 		end
-		local DraggableObject = DraggableObjectf()
+		local ManagedDraggableObject = {}
+		ManagedDraggableObject.__index = ManagedDraggableObject
+
+		local function clampGuiPosition(position, guiObject)
+			local screenGui = guiObject and guiObject:FindFirstAncestorWhichIsA("ScreenGui")
+			if not screenGui then return position end
+			local bounds = screenGui.AbsoluteSize
+			local x = math.clamp(
+				position.X.Scale * bounds.X + position.X.Offset,
+				0,
+				bounds.X
+			)
+			local y = math.clamp(
+				position.Y.Scale * bounds.Y + position.Y.Offset,
+				0,
+				bounds.Y
+			)
+			return UDim2.new(
+				position.X.Scale,
+				x - position.X.Scale * bounds.X,
+				position.Y.Scale,
+				y - position.Y.Scale * bounds.Y
+			)
+		end
+
+		function ManagedDraggableObject.new(object, toMove, smooth, callbackOnly)
+			return setmetatable({
+				Object = object,
+				ToMove = toMove,
+				Smooth = smooth,
+				CallbackOnly = callbackOnly,
+				CanBeDragged = false,
+				Dragging = false,
+				Velocity = Vector2.zero,
+				_connections = {},
+			}, ManagedDraggableObject)
+		end
+
+		function ManagedDraggableObject:_disconnect()
+			for index = #self._connections, 1, -1 do
+				local connection = self._connections[index]
+				appRuntime.release(connection)
+				table.remove(self._connections, index)
+			end
+		end
+
+		function ManagedDraggableObject:Enable()
+			if self.CanBeDragged or not self.Object or not self.Object.Parent then return end
+			self.CanBeDragged = true
+			local userInputService = game:GetService("UserInputService")
+			local tweenService = game:GetService("TweenService")
+			local activeInput
+			local pressed = false
+			local startPosition
+			local initialPosition
+
+			local function remember(connection)
+				table.insert(self._connections, appRuntime.track(connection))
+			end
+
+			remember(self.Object.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch then
+					pressed = true
+					local endedConnection
+					endedConnection = appRuntime.track(input.Changed:Connect(function()
+						if input.UserInputState == Enum.UserInputState.End then
+							if self.Dragging and self.DragEnded then
+								self.DragEnded(self.Velocity)
+							end
+							self.Dragging = false
+							pressed = false
+							appRuntime.release(endedConnection)
+						end
+					end))
+				end
+			end))
+
+			remember(self.Object.InputChanged:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseMovement
+					or input.UserInputType == Enum.UserInputType.Touch then
+					activeInput = input
+				end
+			end))
+
+			remember(userInputService.InputChanged:Connect(function(input)
+				if not self.Object.Parent then
+					self:Disable()
+					return
+				end
+				if pressed then
+					pressed = false
+					self.Dragging = true
+					startPosition = input.Position
+					initialPosition = (self.ToMove or self.Object).Position
+					self.LastPosition = input.Position
+					if self.DragStarted then self.DragStarted() end
+				end
+				if input ~= activeInput or not self.Dragging then return end
+
+				local delta = input.Position - startPosition
+				local nextPosition = UDim2.new(
+					initialPosition.X.Scale,
+					initialPosition.X.Offset + delta.X,
+					initialPosition.Y.Scale,
+					initialPosition.Y.Offset + delta.Y
+				)
+				if not self.CallbackOnly then
+					nextPosition = clampGuiPosition(nextPosition, self.Object)
+					local moving = self.ToMove or self.Object
+					if self.Smooth == nil or self.Smooth then
+						tweenService:Create(
+							moving,
+							TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out),
+							{Position = nextPosition}
+						):Play()
+					else
+						moving.Position = nextPosition
+					end
+				end
+				self.Velocity = input.Position - self.LastPosition
+				self.LastPosition = input.Position
+				if self.Dragged then self.Dragged(nextPosition) end
+			end))
+
+			remember(self.Object.Destroying:Connect(function() self:Disable() end))
+		end
+
+		function ManagedDraggableObject:Disable()
+			if not self.CanBeDragged and #self._connections == 0 then return end
+			self.CanBeDragged = false
+			if self.Dragging and self.DragEnded then
+				self.DragEnded(self.Velocity)
+			end
+			self.Dragging = false
+			self:_disconnect()
+		end
+
+		local DraggableObject = ManagedDraggableObject
+		FUNCTIONSmodule.DraggableObject = DraggableObject
 		
 		function ClickAndHoldf()
 			local a={}a.__index=a;local b=game:GetService("UserInputService")function a.new(c,d)local self=setmetatable({},a)self.textButton=c;self.holdTime=d or 0.5;self.holdTask=nil;self.initialPosition=nil;self.Holded=Instance.new("BindableEvent")local function e(f,g)return math.sqrt((g.X-f.X)^2+(g.Y-f.Y)^2)end;self.textButton.MouseButton1Down:Connect(function(h,i)self.initialPosition=Vector2.new(h,i)self.holdTask=task.spawn(function()task.wait(self.holdTime)if self.holdTask then self.Holded:Fire()end end)end)b.InputChanged:Connect(function(j)if j.UserInputType==Enum.UserInputType.MouseMovement or j.UserInputType==Enum.UserInputType.Touch then if self.holdTask and self.initialPosition then local k=j.Position;local l=e(self.initialPosition,k)if l>10 then coroutine.close(self.holdTask)self.holdTask=nil end end end end)b.InputEnded:Connect(function(j)if j.UserInputType==Enum.UserInputType.MouseButton1 or j.UserInputType==Enum.UserInputType.Touch then if self.holdTask then coroutine.close(self.holdTask)self.holdTask=nil end;self.initialPosition=nil end end)return self end;return a
 		end
-		local ClickAndHold = ClickAndHoldf()
+		local ManagedClickAndHold = {}
+		ManagedClickAndHold.__index = ManagedClickAndHold
+
+		function ManagedClickAndHold.new(textButton, holdTime)
+			local self = setmetatable({
+				textButton = textButton,
+				holdTime = holdTime or 0.5,
+				holdTask = nil,
+				initialPosition = nil,
+				Holded = Instance.new("BindableEvent"),
+				_connections = {},
+			}, ManagedClickAndHold)
+			local userInputService = game:GetService("UserInputService")
+
+			local function remember(connection)
+				table.insert(self._connections, appRuntime.track(connection))
+			end
+			local function cancelHold()
+				if self.holdTask then
+					pcall(task.cancel, self.holdTask)
+					self.holdTask = nil
+				end
+				self.initialPosition = nil
+			end
+
+			remember(textButton.MouseButton1Down:Connect(function(x, y)
+				cancelHold()
+				self.initialPosition = Vector2.new(x, y)
+				self.holdTask = task.delay(self.holdTime, function()
+					if self.holdTask and textButton.Parent then
+						self.holdTask = nil
+						self.Holded:Fire()
+					end
+				end)
+			end))
+			remember(userInputService.InputChanged:Connect(function(input)
+				if self.holdTask and self.initialPosition
+					and (input.UserInputType == Enum.UserInputType.MouseMovement
+						or input.UserInputType == Enum.UserInputType.Touch)
+					and (input.Position - self.initialPosition).Magnitude > 10 then
+					cancelHold()
+				end
+			end))
+			remember(userInputService.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch then
+					cancelHold()
+				end
+			end))
+			remember(textButton.Destroying:Connect(function() self:Destroy() end))
+			return self
+		end
+
+		function ManagedClickAndHold:Destroy()
+			if self.holdTask then pcall(task.cancel, self.holdTask) end
+			self.holdTask = nil
+			for index = #self._connections, 1, -1 do
+				appRuntime.release(self._connections[index])
+				table.remove(self._connections, index)
+			end
+			if self.Holded then
+				self.Holded:Destroy()
+				self.Holded = nil
+			end
+		end
+
+		local ClickAndHold = ManagedClickAndHold
 		function PointSavef()
 			local _=false local function d(...)if _ then print("[PointSave DEBUG]:",...)end end getgenv()._FOLDERS=getgenv()._FOLDERS or{} getgenv()._FILES=getgenv()._FILES or{} isfolder=isfolder or function(_)d("Checking if folder exists:",_) return getgenv()._FOLDERS[_]~=nil end makefolder=makefolder or function(_)d("Creating folder:",_) getgenv()._FOLDERS[_]={} return getgenv()._FOLDERS[_]end isfile=isfile or function(_)d("Checking if file exists:",_) return getgenv()._FILES[_]~=nil end writefile=writefile or function(a,_)d("Writing file:",a,"with content:",_) getgenv()._FILES[a]=_ return getgenv()._FILES[a]end readfile=readfile or function(_)d("Reading file:",_) return getgenv()._FILES[_]end delfile=delfile or function(_)d("Deleting file:",_) getgenv()._FILES[_]=nil end listfiles=listfiles or function(c)d("Listing files in folder:",c) local _=getgenv()._FOLDERS[c] if _ then local a={} for b,_ in pairs(getgenv()._FILES)do if b:sub(1,#c+1)==c.."/"then local _=b:sub(#c+2) d("Found file in folder:",_) table.insert(a,_)end end return a end d("Folder does not exist:",c) return{}end local b={} b.__index=b local c="PointSaveData" local function _()if not isfolder(c)then d("Base folder not found, creating:",c) makefolder(c)else d("Base folder already exists:",c)end end function b.new(a)d("Initializing new PointSave instance for namespace:",a) _() local _=setmetatable({},b) _.namespace=a _.folderPath=c.."/"..a if not isfolder(_.folderPath)then d("Namespace folder does not exist, creating:",_.folderPath) makefolder(_.folderPath)else d("Namespace folder already exists:",_.folderPath)end return _ end function b:set(b,a)local _=self.folderPath.."/"..b..".txt" d("Setting value for key:",b,"->",a) writefile(_,tostring(a))end function b:get(a)local _=self.folderPath.."/"..a..".txt" d("Getting value for key:",a) if isfile(_)then local _=readfile(_) d("Found value for key:",a,"->",_) return _ end d("Key not found:",a) return nil end function b:remove(a)local _=self.folderPath.."/"..a..".txt" d("Removing key:",a) if isfile(_)then delfile(_) d("Removed file for key:",a)else d("File for key does not exist:",a)end end function b:clear()d("Clearing all keys in namespace:",self.namespace) local _=listfiles(self.folderPath) for _,_ in ipairs(_)do local _=self.folderPath.."/".._ if isfile(_)then d("Deleting file:",_) delfile(_)end end end function b.deleteNamespace(a)local b=c.."/"..a d("Deleting namespace:",a) local _=listfiles(b) for _,_ in ipairs(_)do local _=b.."/".._ if isfile(_)then d("Deleting file from namespace:",_) delfile(_)end end getgenv()._FOLDERS[b]=nil d("Deleted folder for namespace:",a)end function b.listNamespaces()d("Listing all namespaces") _() local b={} for a,_ in pairs(getgenv()._FOLDERS)do if a:sub(1,#c+1)==c.."/"then local _=a:sub(#c+2) d("Found namespace:",_) table.insert(b,_)end end return b end return b
 		end
@@ -1866,6 +2134,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 		local floatingButtonDraggers = {}
 		local floatingButtonKeybinds = {}
 		local floatingButtonConnections = {}
+		local floatingButtonGlobalConnections = {}
 		
 		local fBSFResizeDragger = nil
 		getgenv().fBSFButton = nil
@@ -2130,18 +2399,24 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 		end
 		
 		function FUNCTIONSmodule.createFloatingButton(item,button,buttonname,fromload)
-			if not getgenv().TIESAS.FloatingButtons:FindFirstChild(string.gsub(buttonname, "_", "")) then
+			local normalizedName = string.gsub(buttonname, "_", "")
+			local existingButton = getgenv().TIESAS.FloatingButtons:FindFirstChild(normalizedName)
+			-- La carga inicial debe ser idempotente. Antes, encontrar SHOOT ya
+			-- creado entraba en la rama de borrado y causaba una carrera con Init.
+			if existingButton and fromload then return existingButton end
+			if not existingButton then
 				
 				
 				local UserInputService = game:GetService("UserInputService")
-				if not fromload then
-					TIESASPointSave:set(string.gsub(buttonname, "_", ""), udim2Serializer(UDim2.fromOffset(125, 90)) .. "|" .. udim2Serializer(UDim2.fromOffset(200,50)) .. "|true|true")
+				local savedButtonData = TIESASPointSave:get(normalizedName)
+				if not savedButtonData then
+					TIESASPointSave:set(normalizedName, udim2Serializer(UDim2.fromOffset(125, 90)) .. "|" .. udim2Serializer(UDim2.fromOffset(200,50)) .. "|true|true")
 				end
 		
 				local newFloatingButton = getgenv().TIESAS.FloatingButton:Clone()
 				newFloatingButton.Parent = getgenv().TIESAS.FloatingButtons
 				
-				newFloatingButton.Name = string.gsub(buttonname, "_", "")
+				newFloatingButton.Name = normalizedName
 				newFloatingButton.Text = string.gsub(buttonname, "_", " ")
 				
 				newFloatingButton.BackgroundColor3 = FUNCTIONSmodule.getTheme().primaryColor
@@ -2203,17 +2478,18 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 						end)
 					end
 				end
-				UserInputService.InputEnded:Connect(function(input)
+				local releaseRippleConnection = appRuntime.track(UserInputService.InputEnded:Connect(function(input)
 					if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
 						closeRipple()
 					end
-				end)
+				end))
+				floatingButtonGlobalConnections[normalizedName] = {releaseRippleConnection}
 				
 				local shouldBeDraggable = true
 				if not fromload then
 					newFloatingButton.Position = UDim2.fromOffset(-125, 90)
-				elseif TIESASPointSave:get(string.gsub(buttonname, "_", "")) then
-					local data = TIESASPointSave:get(string.gsub(buttonname, "_", "")):split("|")
+				elseif savedButtonData then
+					local data = savedButtonData:split("|")
 					newFloatingButton.Position = udim2Serializer(data[1])
 					ts:Create(newFloatingButton, TweenInfo.new(2, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {
 						Size = udim2Serializer(data[2])
@@ -2270,7 +2546,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 		
 				local uis = game:GetService("UserInputService")
 				if uis.KeyboardEnabled and uis.MouseEnabled then
-					floatingButtonConnections[string.gsub(buttonname, "_", "")] = uis.InputBegan:Connect(function(inp, processed)
+					floatingButtonConnections[string.gsub(buttonname, "_", "")] = appRuntime.track(uis.InputBegan:Connect(function(inp, processed)
 						if processed then return end
 						if inp.KeyCode == floatingButtonKeybinds[string.gsub(buttonname, "_", "")] then
 							if typeof(item["Args"][2]) == "function" then
@@ -2279,14 +2555,22 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 								item["Args"][2][buttonname](button)
 							end
 						end
-					end)
+					end))
+					table.insert(
+						floatingButtonGlobalConnections[normalizedName],
+						floatingButtonConnections[normalizedName]
+					)
 				end
 		
 			else
 				floatingButtonKeybinds[string.gsub(buttonname, "_", "")] = nil
 				if floatingButtonConnections[string.gsub(buttonname, "_", "")] then
-					floatingButtonConnections[string.gsub(buttonname, "_", "")]:Disconnect()
+					floatingButtonConnections[string.gsub(buttonname, "_", "")] = nil
 				end
+				for _, connection in ipairs(floatingButtonGlobalConnections[normalizedName] or {}) do
+					appRuntime.release(connection)
+				end
+				floatingButtonGlobalConnections[normalizedName] = nil
 				TIESASPointSave:remove(string.gsub(buttonname, "_", ""))
 				task.spawn(function()
 					local buttontodestroy = getgenv().TIESAS.FloatingButtons:FindFirstChild(string.gsub(buttonname, "_", ""))
@@ -2307,7 +2591,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					if item["Type"] == "Button" then
 						local key = string.gsub(item["Args"][1], "_", "")
 						local saved = TIESASPointSave:get(key)
-						if saved then
+						if saved or item["FloatingDefault"] then
 							FUNCTIONSmodule.createFloatingButton(item, Instance.new("TextButton"), item["Args"][1], true)
 						end
 					end
@@ -2864,51 +3148,6 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
     end
     routine_module_scripts[script] = module_script
 end
-do -- Routine Module: StarterGui.TIESAS.DraggableObject
-    local script = Instance.new("ModuleScript")
-    script.Name = "DraggableObject"
-    script.Parent = Converted["_TIESAS"]
-    local function module_script()
-
-		local function a(b,c)local d=c.AbsoluteSize;local e=c.AbsolutePosition;local f=b.X.Scale*d.X+b.X.Offset;local g=b.Y.Scale*d.Y+b.Y.Offset;local h=math.clamp(f,0,d.X)local i=math.clamp(g,0,d.Y)local j=UDim2.new(b.X.Scale,h-b.X.Scale*d.X,b.Y.Scale,i-b.Y.Scale*d.Y)return j end;local k=UDim2.new;local l=game:GetService("UserInputService")local m=game:GetService("TweenService")local n={}n.__index=n;function n.new(o,p,q,r)local self={}self.Object=o;self.ToMove=p;self.Smooth=q;self.CallbackOnly=r;self.DragStarted=nil;self.DragEnded=nil;self.Dragged=nil;self.Dragging=false;self.LastPosition=nil;self.Velocity=Vector2.new(0,0)setmetatable(self,n)return self end;function n:Enable()local s=self.Object;local t=self.ToMove;local u=nil;local v=nil;local w=nil;local x=false;local function y(z)local A=z.Position-v;local B=UDim2.new(w.X.Scale,w.X.Offset+A.X,w.Y.Scale,w.Y.Offset+A.Y)if self.CallbackOnly then else B=a(B,self.Object:FindFirstAncestorWhichIsA("ScreenGui"))if(self.Smooth==nil or self.Smooth==true)and self.Smooth~=false then m:Create(t and t or s,TweenInfo.new(0.5,Enum.EasingStyle.Cubic,Enum.EasingDirection.Out),{Position=B}):Play()else local C=t and t or s;C.Position=B end end;return B end;self.InputBegan=s.InputBegan:Connect(function(z)if z.UserInputType==Enum.UserInputType.MouseButton1 or z.UserInputType==Enum.UserInputType.Touch then x=true;local D;D=z.Changed:Connect(function()if z.UserInputState==Enum.UserInputState.End and(self.Dragging or x)then self.Dragging=false;D:Disconnect()if self.DragEnded and not x then self.DragEnded(self.Velocity)end;x=false end end)end end)self.InputChanged=s.InputChanged:Connect(function(z)if z.UserInputType==Enum.UserInputType.MouseMovement or z.UserInputType==Enum.UserInputType.Touch then u=z end end)self.InputChanged2=l.InputChanged:Connect(function(z)if s.Parent==nil then self:Disable()return end;if x then x=false;if self.DragStarted then self.DragStarted()end;self.Dragging=true;v=z.Position;if t then w=t.Position else w=s.Position end;self.LastPosition=z.Position end;if z==u and self.Dragging then local B=y(z)self.Velocity=z.Position-self.LastPosition;self.LastPosition=z.Position;if self.Dragged then self.Dragged(B)end end end)end;function n:Disable()self.InputBegan:Disconnect()self.InputChanged:Disconnect()self.InputChanged2:Disconnect()if self.Dragging then self.Dragging=false;if self.DragEnded then self.DragEnded(self.Velocity)end end end;return n
-		
-    end
-    routine_module_scripts[script] = module_script
-end
-do -- Routine Module: StarterGui.TIESAS.ClickAndHold
-    local script = Instance.new("ModuleScript")
-    script.Name = "ClickAndHold"
-    script.Parent = Converted["_TIESAS"]
-    local function module_script()
-
-
-		local a={}a.__index=a;local b=game:GetService("UserInputService")function a.new(c,d)local self=setmetatable({},a)self.textButton=c;self.holdTime=d or 0.5;self.holdTask=nil;self.initialPosition=nil;self.Holded=Instance.new("BindableEvent")local function e(f,g)return math.sqrt((g.X-f.X)^2+(g.Y-f.Y)^2)end;self.textButton.MouseButton1Down:Connect(function(h,i)self.initialPosition=Vector2.new(h,i)self.holdTask=task.spawn(function()task.wait(self.holdTime)if self.holdTask then self.Holded:Fire()end end)end)b.InputChanged:Connect(function(j)if j.UserInputType==Enum.UserInputType.MouseMovement or j.UserInputType==Enum.UserInputType.Touch then if self.holdTask and self.initialPosition then local k=j.Position;local l=e(self.initialPosition,k)if l>10 then coroutine.close(self.holdTask)self.holdTask=nil end end end end)b.InputEnded:Connect(function(j)if j.UserInputType==Enum.UserInputType.MouseButton1 or j.UserInputType==Enum.UserInputType.Touch then if self.holdTask then coroutine.close(self.holdTask)self.holdTask=nil end;self.initialPosition=nil end end)return self end;return a
-    end
-    routine_module_scripts[script] = module_script
-end
-do -- Routine Module: StarterGui.TIESAS.Spring
-    local script = Instance.new("ModuleScript")
-    script.Name = "Spring"
-    script.Parent = Converted["_TIESAS"]
-    local function module_script()
-
-		local a=game:GetService("RunService")local b={}function OverDamping(c,d,e,f,g,h)local i=d*d-4*e/c;local j=-1/2;local k=d+math.sqrt(i)local l=d-math.sqrt(i)local m,n=j*k,j*l;local o,p=(n*f-g)/(n-m),(m*f-g)/(m-n)local q=h/e;return{Offset=function(r)return o*math.exp(m*r)+p*math.exp(n*r)+q end,Velocity=function(r)return o*m*math.exp(m*r)+p*n*math.exp(n*r)end,Acceleration=function(r)return o*m*m*math.exp(m*r)+p*n*n*math.exp(n*r)end}end;function CriticalDamping(c,d,e,f,g,h)local s=-d/2;local o,p=f,g-s*f;local q=h/e;return{Offset=function(r)return math.exp(s*r)*(o+p*r)+q end,Velocity=function(r)return math.exp(s*r)*(p*s*r+o*s+p)end,Acceleration=function(r)return s*math.exp(s*r)*(p*s*r+o*s+2*p)end}end;function UnderDamping(c,d,e,f,g,h)local i=d*d-4*e/c;local s=-d/2;local t=math.sqrt(-i)local o,p=f,(g-s*f)/t;local q=h/e;return{Offset=function(r)return math.exp(s*r)*(o*math.cos(t*r)+p*math.sin(t*r))+q end,Velocity=function(r)return-math.exp(s*r)*((o*t-p*s)*math.sin(t*r)+(-p*t-o*s)*math.cos(t*r))end,Acceleration=function(r)return-math.exp(s*r)*((p*t*t+2*o*s*t-p*s*s)*math.sin(t*r)+(o*t*t-2*p*s*t-o*s*s)*math.cos(t*r))end}end;function b.F(u)local f,g,h=u.InitialOffset,u.InitialVelocity,u.ExternalForce;local c,d,e=u.Mass,u.Damping,u.Constant;local i=d*d-4*e/c;if i>0 then return OverDamping(c,d,e,f,g,h)elseif i==0 then return CriticalDamping(c,d,e,f,g,h)else return UnderDamping(c,d,e,f,g,h)end end;local v=b;local w=math.sqrt;local x=math.pi;local y={OFFSET="Offset",VELOCITY="Velocity",ACCELERATION="Acceleration",GOAL="Goal",FREQUENCY="Frequency"}local z=[[.]]local A=[[.]]local u={}local B={}B.__index=function(self,C)local D={[y.OFFSET]=function()local r=tick()-self.StartTick;local E=self.F;local F=E.Offset(r)return F end,[y.VELOCITY]=function()local r=tick()-self.StartTick;local E=self.F;local G=E.Velocity(r)return G end,[y.ACCELERATION]=function()local r=tick()-self.StartTick;local E=self.F;local H=E.Acceleration(r)return H end,[y.GOAL]=function()local I=self.ExternalForce;local J=self.Constant;return I/J end,[y.FREQUENCY]=function()local K=self.Damping;local L=self.Constant;local M=self.Mass;return w(-K*K+4*L/M)/(2*x)end}local N=rawget(self,C)if N~=nil then return N end;local O=D[C]if O~=nil then return O()end;return B[C]end;B.__tostring=function(self)local r=tick()-self.StartTick;local E=self.F;local P=self.AdvancedObjectStringEnabled;local Q;if P==false then Q=string.format(z,E.Offset(r),E.Velocity(r),E.Acceleration(r))elseif P==true then Q=string.format(A,self.Mass,self.Damping,self.Constant,self.Goal,self.Frequency,self.InitialOffset,self.InitialVelocity,self.ExternalForce,self.StartTick,E.Offset(r),E.Velocity(r),E.Acceleration(r))end;return Q end;function u.new(M,K,L,f,g,R)assert(M>0,"Mass for spring system cannot be less than or equal to 0")assert(L>0,"Spring constant for spring system cannot be less than or equal to 0")f=f or 0;g=g or 0;R=R or 0;local S=R*L;local T={Mass=M,Damping=K,Constant=L,InitialOffset=f-R,InitialVelocity=g,ExternalForce=S,AdvancedObjectStringEnabled=false,StartTick=0}setmetatable(T,B)T:Reset()return T end;function u.fromFrequency(M,K,U,f,g,R)assert(M>0,"Mass for spring system cannot be less than or equal to 0")assert(U>0,"Spring frequency for spring system cannot be less than or equal to 0")local L=0.25*M*(4*x*x*U*U+K*K)f=f or 0;g=g or 0;R=R or 0;local S=R*L;local T={Mass=M,Damping=K,Constant=L,InitialOffset=f-R,InitialVelocity=g,ExternalForce=S,AdvancedObjectStringEnabled=false,StartTick=0}setmetatable(T,B)T:Reset()return T end;function B:Reset()self.F=v.F(self)self.StartTick=tick()end;function B:SetExternalForce(V)self.ExternalForce=V;self.InitialOffset=self.Offset-V/self.Constant;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SetGoal(R)self.ExternalForce=R*self.Constant;self.InitialOffset=self.Offset-R;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SetFrequency(U)self.Constant=0.25*self.Mass*(4*x*x*U*U+self.Damping*self.Damping)self.InitialOffset=self.Offset;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SnapToCriticalDamping()self.Damping=2*w(self.Constant/self.Mass)self.InitialOffset=self.Offset;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SetOffset(F,W)self.InitialOffset=F-self.Goal;self.InitialVelocity=W and 0 or self.Velocity;self:Reset()end;function B:AddOffset(F)self.InitialOffset=self.Offset+F;self.InitialVelocity=self.Velocity;self:Reset()end;function B:SetVelocity(G)self.InitialOffset=self.Offset;self.InitialVelocity=G;self:Reset()end;function B:AddVelocity(G)self.InitialOffset=self.Offset;self.InitialVelocity=self.Velocity+G;self:Reset()end;function B:Print()local X=tostring(self)print(X)end;return u
-    end
-    routine_module_scripts[script] = module_script
-end
-do -- Routine Module: StarterGui.TIESAS.ESPIndicator
-    local script = Instance.new("ModuleScript")
-    script.Name = "ESPIndicator"
-    script.Parent = Converted["_TIESAS"]
-    local function module_script()
-
-		-- Robust ESP module with distancing, arrows, and grouping
-		-- Designed and written by TIESAS
-		
-		local e={} e.__index=e local a=game:GetService("RunService") local _=game:GetService("Players") local b=game:GetService("HttpService") local l=game:GetService("TweenService") e.Groups={} e.TargetIndex={} e.Defaults={AccentColor=Color3.new(1,1,0),HighlightFillTransparency=0.7,HighlightOutlineTransparency=0,HighlightDepthMode=Enum.HighlightDepthMode.AlwaysOnTop,ArrowShow=false,ArrowEdgePadding=50,ArrowMinDistance=0,ArrowSize=UDim2.new(0,30,0,30),ArrowImage="rbxassetid://97136202386756",ArrowShowDistanceText=true,ArrowDistanceFont=Enum.Font.Montserrat,ArrowDistanceTextSize=18,ShowLabel=false,LabelText="Target",LabelMaxDistance=99999,LabelOffset=Vector3.new(0,2,0),Parent=game:GetService("CoreGui")} function e.new(b)local c=setmetatable({},e) c.Settings={} for a,_ in pairs(e.Defaults)do c.Settings[a]=(b and b[a]~=nil)and b[a]or _ end local _=c.Settings.Parent or _.LocalPlayer:WaitForChild("PlayerGui") c.ScreenGui=Instance.new("ScreenGui") c.ScreenGui.Name="ESPIndicators" c.ScreenGui.IgnoreGuiInset=true c.ScreenGui.ResetOnSpawn=false c.ScreenGui.Parent=_ c.ArrowTemplate=Instance.new("ImageLabel") c.ArrowTemplate.Name="ArrowTemplate" c.ArrowTemplate.Size=c.Settings.ArrowSize c.ArrowTemplate.AnchorPoint=Vector2.new(0.5,0.5) c.ArrowTemplate.BackgroundTransparency=1 c.ArrowTemplate.Image=c.Settings.ArrowImage c.ArrowTemplate.ImageColor3=c.Settings.AccentColor c.ArrowTemplate.Visible=false c.ArrowTemplate.Parent=c.ScreenGui c.Scaler=Instance.new("UIScale") c.Scaler.Name="Scaler" c.Scaler.Scale=0 c.Scaler.Parent=c.ArrowTemplate c.Indicators={} c._updateConn=a.RenderStepped:Connect(function()c:_update()end) c._cleanupConn=a.Heartbeat:Connect(function()c:_cleanupOrphanedArrows() c:_cleanupOrphanedHighlights() c:_cleanupOrphanedLabels()end) return c end function e:AddGroup(_)local a=e.Groups[_] if not a then a={enabled=true,properties={},targets={}} e.Groups[_]=a end return a end function e:GetGroup(_)return e.Groups[_]end function e:RemoveGroup(b)local _=e.Groups[b] if not _ then return false end for _,_ in ipairs(_.targets)do local c=e.TargetIndex[_] if c then for _,a in ipairs(c)do if a==b then table.remove(c,_) break end end if#c==0 then e.TargetIndex[_]=nil end end if not e.TargetIndex[_]then self:Remove(_)end end e.Groups[b]=nil return true end function e:ClearAllGroups()for a,_ in pairs(e.Groups)do self:RemoveGroup(a)end end function e:ToggleGroup(_,a)local b=e.Groups[_] if not b then return end b.enabled=(a~=nil)and a or not b.enabled for _,_ in ipairs(b.targets)do local _=self.Indicators[_] if _ then if _.Highlight then _.Highlight.Enabled=b.enabled end if _.Arrow then _.Arrow.Visible=b.enabled and self.Settings.ArrowShow end if _.Label then _.Label.Enabled=b.enabled end end end return b.enabled end function e:SetGroupProperty(_,a,b)local _=self:AddGroup(_) _.properties[a]=b for _,_ in ipairs(_.targets)do local _=self.Indicators[_] if _ then if a=="AccentColor"then if _.Highlight then _.Highlight.FillColor=b _.Highlight.OutlineColor=b end if _.Arrow then _.Arrow.ImageColor3=b end if _.DistanceLabel then _.DistanceLabel.TextColor3=b end if _.Label and _.Label:FindFirstChild("TextLabel")then _.Label.TextLabel.TextColor3=b end end end end end function e:Add(a,g)assert(a,"ESPIndicator:Add requires a non-nil target") g=g or{} local d=Instance.new("Highlight") d.Name="Highlight_"..b:GenerateGUID(false) d.Adornee=a d.FillTransparency=g.HighlightFillTransparency or self.Settings.HighlightFillTransparency d.FillColor=g.AccentColor or self.Settings.AccentColor d.OutlineColor=g.AccentColor or self.Settings.AccentColor d.OutlineTransparency=g.HighlightOutlineTransparency or self.Settings.HighlightOutlineTransparency d.DepthMode=g.HighlightDepthMode or self.Settings.HighlightDepthMode d.Parent=self.ScreenGui local c,_,e if(g.ArrowShow or self.Settings.ArrowShow)then c=self.ArrowTemplate:Clone() c.Name="Arrow_"..b:GenerateGUID(false) c.ImageColor3=g.AccentColor or self.Settings.AccentColor c.Visible=true c.Parent=self.ScreenGui _=c:FindFirstChild("Scaler") if(g.ArrowShowDistanceText or self.Settings.ArrowShowDistanceText)then e=Instance.new("TextLabel") e.Name="DistanceLabel" e.AnchorPoint=Vector2.new(0.5,0) e.BackgroundTransparency=1 e.Font=g.ArrowDistanceFont or self.Settings.ArrowDistanceFont e.TextSize=g.ArrowDistanceTextSize or self.Settings.ArrowDistanceTextSize e.TextColor3=g.AccentColor or self.Settings.AccentColor e.Parent=c end end local f if(g.ShowLabel or self.Settings.ShowLabel)then f=Instance.new("BillboardGui") f.Name="Label_"..b:GenerateGUID(false) f.AlwaysOnTop=true f.MaxDistance=self.Settings.LabelMaxDistance f.Size=UDim2.new(0,70,0,70) f.StudsOffset=self.Settings.LabelOffset f.Adornee=a f.Parent=self.ScreenGui local _=Instance.new("TextLabel") _.Name="TextLabel" _.Size=UDim2.new(1,0,1,0) _.AnchorPoint=Vector2.new(0.5,0.5) _.Position=UDim2.new(0.5,0,0.5,0) _.BackgroundTransparency=1 _.Font=Enum.Font.SourceSansBold _.TextScaled=true _.TextWrapped=true _.TextSize=14 _.TextColor3=g.AccentColor or self.Settings.AccentColor _.Text=g.LabelText or self.Settings.LabelText _.Parent=f Instance.new("UIStroke",_)end self.Indicators[a]={Highlight=d,Arrow=c,Scaler=_,DistanceLabel=e,Label=f,Options=g} local _=g.GroupName or self.Settings.GroupName if _ then self:AddToGroup(a,_)end end function e:Remove(c)local _=self.Indicators[c] if not _ then return end if _.Highlight then _.Highlight.Adornee=nil _.Highlight:Destroy()end if _.Arrow then _.Arrow:Destroy()end if _.Label then _.Label:Destroy()end local _=e.TargetIndex[c] if _ then for _,_ in ipairs(_)do local b=e.Groups[_] if b then for a,_ in ipairs(b.targets)do if _==c then table.remove(b.targets,a) break end end end end e.TargetIndex[c]=nil end self.Indicators[c]=nil end function e:AddToGroup(c,b)local _=self:AddGroup(b) if not table.find(_.targets,c)then table.insert(_.targets,c)end local a=e.TargetIndex[c] if not a then a={} e.TargetIndex[c]=a end if not table.find(a,b)then table.insert(a,b)end for a,_ in pairs(_.properties)do self:SetGroupProperty(b,a,_)end if not _.enabled then local _=self.Indicators[c] if _ and _.Highlight then _.Highlight.Enabled=false end end return true end function e:RemoveFromGroup(d,b)local c=e.Groups[b] if not c then return false end if table.find(c.targets,d)then for _,a in ipairs(c.targets)do if a==d then table.remove(c.targets,_) break end end else return false end local c=e.TargetIndex[d] if c then for a,_ in ipairs(c)do if _==b then table.remove(c,a) break end end if#c==0 then e.TargetIndex[d]=nil end end return true end function e:GetGroupTargets(_)local _=e.Groups[_] return _ and _.targets or{}end function e:GetTargetGroups(_)return e.TargetIndex[_]or{}end function e:_cleanupOrphanedHighlights()for _,_ in ipairs(self.ScreenGui:GetChildren())do if _:IsA("Highlight")and not table.find(self:_allHighlights(),_)then _.Adornee=nil _:Destroy()end end end function e:_allHighlights()local a={} for _,_ in pairs(self.Indicators)do if _.Highlight then table.insert(a,_.Highlight)end end return a end function e:_cleanupOrphanedArrows()for _,_ in ipairs(self.ScreenGui:GetChildren())do if _:IsA("ImageLabel")and _.Name:match("^Arrow_")then if not table.find(self:_allArrows(),_)then _:Destroy()end end end end function e:_allArrows()local a={} for _,_ in pairs(self.Indicators)do if _.Arrow then table.insert(a,_.Arrow)end end return a end function e:_cleanupOrphanedLabels()for _,_ in ipairs(self.ScreenGui:GetChildren())do if _:IsA("BillboardGui")and _.Name:match("^Label_")then if not table.find(self:_allLabels(),_)then _.Adornee=nil _:Destroy()end end end end function e:_allLabels()local a={} for _,_ in pairs(self.Indicators)do if _.Label then table.insert(a,_.Label)end end return a end function e:_update()local a=workspace.CurrentCamera local _=a.ViewportSize local f,i=_.X,_.Y for _,p in pairs(self.Indicators)do local j=p.Options local h=p.Arrow local k=p.Scaler if((not h)or(not k))and self.Settings.ArrowShow then self:Remove(_) continue end if not h then continue end local n if _:IsA("Model")then n=(_.PrimaryPart and _.PrimaryPart.Position)or _:GetModelCFrame().p elseif _:IsA("BasePart")then n=_.Position else continue end local m,e=a:WorldToViewportPoint(n) local c=(a.CFrame.p-n).Magnitude local _=j.ArrowMinDistance or self.Settings.ArrowMinDistance local o=j.ArrowEdgePadding or self.Settings.ArrowEdgePadding if e and c>_ then l:Create(k,TweenInfo.new(0.1,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Scale=0}):Play()else l:Create(k,TweenInfo.new(0.1,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Scale=1}):Play() local d,g=f-o*2,i-o*2 local b=a.CFrame local _=math.sqrt((d/2)^2+(g/2)^2) local a=n-b.Position local a=b:VectorToObjectSpace(a) local n=Vector2.new(a.X,a.Y).Unit local a=math.clamp(m.X,o,f-o) local b=math.clamp(m.Y,o,i-o) if a==m.X and b==m.Y and e then l:Create(k,TweenInfo.new(0.1,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Scale=0}):Play()else local _=n*_ local b if math.abs(_.Y)>g/2 then b=n*math.abs((g/2)/n.Y)else b=n*math.abs((d/2)/n.X)end local a=f/2+b.X local _=i/2-b.Y local b=math.atan2(n.X,n.Y) l:Create(h,TweenInfo.new(0.1,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Position=UDim2.fromOffset(a,_),Rotation=math.deg(b)}):Play()end if p.DistanceLabel then p.DistanceLabel.Text=string.format("%dm",math.round(c)) local _=(j.ArrowSize and j.ArrowSize.Y.Offset or self.Settings.ArrowSize.Y.Offset)+16 p.DistanceLabel.Position=UDim2.new(0.5,0,0,_)end end end end function e:Destroy()if self._updateConn then self._updateConn:Disconnect()end if self._cleanupConn then self._cleanupConn:Disconnect()end self:ClearAllGroups() for _,_ in pairs(self.Indicators)do if _.Highlight then _.Highlight:Destroy()end if _.Arrow then _.Arrow:Destroy()end if _.Label then _.Label:Destroy()end end self.ScreenGui:Destroy() self.Indicators={} e.Groups={} e.TargetIndex={}end return e
-    end
-    routine_module_scripts[script] = module_script
-end
 do -- Routine Module: StarterGui.TIESAS.Bezier
     local script = Instance.new("ModuleScript")
     script.Name = "Bezier"
@@ -3106,1806 +3345,6 @@ do -- Routine Module: StarterGui.TIESAS.Theme
     end
     routine_module_scripts[script] = module_script
 end
-do -- Routine Module: StarterGui.TIESAS.FlyUtility
-    local script = Instance.new("ModuleScript")
-    script.Name = "FlyUtility"
-    script.Parent = Converted["_TIESAS"]
-    local function module_script()
-
-		-- Mobile-compatible fly module
-		-- Designed and written by TIESAS
-		
-		local l={} local _=game:GetService("Players") local b=game:GetService("RunService") local d=_.LocalPlayer local h=false local e=50 local c=2 local i=0 local g=Vector3.new() local j=nil local k=nil local f=nil local function _()if f then f:Disconnect() f=nil end if j then j:Destroy() j=nil end if k then k:Destroy() k=nil end local _=d.Character if _ then local _=_:FindFirstChildOfClass("Humanoid") if _ then _.PlatformStand=false end end h=false i=0 end local function a(_)local a=d.Character if not h or not a then l:Stop() return end local _=a:FindFirstChildOfClass("Humanoid") local d=a:FindFirstChild("HumanoidRootPart") local a=workspace.CurrentCamera if not _ or _.Health<=0 or not d or not a then l:Stop() return end local _=_.MoveDirection if _.Magnitude>0.01 then i=math.min(e,i+c) g=_.Unit else i=math.max(0,i-c)end local _=Vector3.new(g.X,0,g.Z) local c=Vector3.zero if _.Magnitude>0 then c=_.Unit*i end local f=a.CFrame.LookVector.Unit local b=g:Dot(f) local _=b<0 and-1 or 1 local a=Vector3.new(f.X,0,f.Z) if a.Magnitude>0 then a=a.Unit end local a=math.abs(g:Dot(a)) local _=f.Y*_*a local _=_*i k.Velocity=Vector3.new(c.X,_,c.Z) local _=(i/e)*30 local _=-math.rad(b*_) j.CFrame=CFrame.new(d.Position,d.Position+f)*CFrame.Angles(_,0,0)end function l:Start()if h then return end local c=d.Character if not c then return end local _=c:FindFirstChildOfClass("Humanoid") local c=c:FindFirstChild("HumanoidRootPart") if not _ or not c then return end h=true j=Instance.new("BodyGyro") j.P=100000 j.MaxTorque=Vector3.new(math.huge,math.huge,math.huge) j.CFrame=c.CFrame j.Parent=c k=Instance.new("BodyVelocity") k.P=10000 k.MaxForce=Vector3.new(math.huge,math.huge,math.huge) k.Velocity=Vector3.new(0,0,0) k.Parent=c _.PlatformStand=true f=b.Heartbeat:Connect(a)end function l:Stop()if not h then return end _()end function l:SetMaxSpeed(_)if type(_)=="number"and _>=0 then e=_ else warn("FlyModule:SetMaxSpeed requires a non-negative number.")end end function l:GetMaxSpeed()return e end function l:IsFlying()return h end d.CharacterRemoving:Connect(function(_)if h then l:Stop()end end) return l
-    end
-    routine_module_scripts[script] = module_script
-end
-
--- Routines:
-
-local function WMYX_routine() -- Routine: StarterGui.TIESAS.Flee the Facility
-    local script = Instance.new("LocalScript")
-    script.Name = "Flee the Facility"
-    script.Parent = Converted["_TIESAS"]
-    local req = require
-    local require = function(obj)
-        local routine = routine_module_scripts[obj]
-        if routine then
-            return routine()
-        end
-        return req(obj)
-    end
-
-
-	local module = {}
-	module["gameId"] = 893973440 -- Restrict module to a certain game ID only. 0 allows all games.
-	if (module["gameId"] ~= game.GameId) and module["gameId"] ~= 0 then
-		script.Enabled = false
-	end
-	
-	module["Name"] = "Flee the Facility"
-	
-	local ts = game:GetService("TweenService")
-	
-	local FUNCTIONS = require(script.Parent.FUNCTIONS)
-	local espindc = require(script.Parent.ESPIndicator)
-	
-	local espcontainer = espindc.new({ArrowEdgePadding = 50, ArrowShowDistanceText = false,})
-	
-	
-	module.players = false
-	module.pcs = false
-	module.pods = false
-	module.exits = false
-	module.lockers = false
-	
-	local hideLabelsAndArrows = false
-	
-	module.antipcerror = false
-	module.flashlight = false
-	
-	local esps = {}
-	
-	local function getBeast()
-		local listplayers = game.Players:GetChildren()
-		for _, player in ipairs(listplayers) do
-			local character = player.Character
-			if character ~= nil and character:FindFirstChild("BeastPowers") then
-				return player
-			end
-		end
-	end
-	
-	local function reloadESP()
-		espcontainer:ClearAllGroups()
-	
-		--for _, i in ipairs(workspace:GetChildren()) do
-		--	if i.Name == "PlayerHighlight" and not module.players then
-		--		i:Destroy()
-		--	end
-	
-		--	if i.Name == "PCHighlight" and not module.pcs then
-		--		i:Destroy()
-		--	end
-	
-		--	if i.Name == "PodsHighlight" and not module.pods then
-		--		i:Destroy()
-		--	end
-	
-		--	if i.Name == "ExitsHighlight" and not module.exits then
-		--		i:Destroy()
-		--	end
-		--end
-		
-		if module.players then
-			
-			
-			local listplayers = game.Players:GetChildren()
-			for _, player in ipairs(listplayers) do
-				if player ~= game.Players.LocalPlayer and player.Character ~= nil then
-					local character = player.Character
-					if player == getBeast() then
-						espcontainer:Add(character, {
-							AccentColor    =  Color3.new(1, 0, 0),
-							ArrowShow        = not hideLabelsAndArrows,
-							ArrowMinDistance       = 999999,           
-							ArrowSize         = UDim2.new(0,40,0,40),
-							LabelText         = "Beast",
-							ShowLabel         = not hideLabelsAndArrows,
-							GroupName         = "players"
-						})
-					else
-						espcontainer:Add(character, {
-							AccentColor    =  Color3.new(0, 1, 0),
-							ArrowShow        = false,
-							ShowLabel         = false,
-							GroupName         = "players"
-						})
-					end
-				end
-			end
-			
-			
-		end
-		
-		if module.pcs then
-			
-			
-			for _, obj in ipairs(game.Workspace:GetDescendants()) do
-				if obj.Name == "ComputerTable" then
-					if obj.Screen.Color == Color3.fromRGB(40, 127, 71) then
-						espcontainer:Add(obj, {
-							AccentColor    =  Color3.new(0.133333, 0.333333, 0.00784314),
-							ArrowShow        = false,
-							ArrowShowDistanceText       = false,
-							ShowLabel         = false,
-							GroupName       	  = "pcs"
-						})
-					else
-						espcontainer:Add(obj, {
-							AccentColor    =  Color3.new(0, 0.37, 1),
-							ArrowShow        = not hideLabelsAndArrows,
-							ArrowMinDistance       = 99999,      
-							ArrowShowDistanceText       = false,
-							ArrowSize        		 = UDim2.new(0,10,0,10),
-							ShowLabel         = false,
-							GroupName       	  = "pcs"
-						})
-					end
-				end
-			end
-			
-			
-		end
-		
-		if module.pods then
-			
-			
-			for _, obj in ipairs(game.Workspace:GetDescendants()) do
-				if obj.Name == "FreezePod" then
-					espcontainer:Add(obj, {
-						AccentColor    =  Color3.new(0, 1, 1),
-						ArrowShow        = false,
-						ShowLabel         = false,
-						GroupName         = "pods"
-					})
-				end
-			end
-			
-			
-		end
-		
-		if module.exits then
-			
-			
-			for _, obj in ipairs(game.Workspace:GetDescendants()) do
-				if obj.Name == "ExitDoor" then
-					espcontainer:Add(obj, {
-						AccentColor    =  Color3.new(1, 1, 0),
-						ArrowShow        = false,
-						ShowLabel         = false,
-						GroupName         = "exits"
-					})
-				end
-			end
-			
-			
-		end
-		
-		if module.lockers then
-	
-	
-			for _, obj in ipairs(game:GetService("CollectionService"):GetTagged("LOCKER")) do
-				espcontainer:Add(obj, {
-					AccentColor    =  Color3.new(1, 0.054902, 0.623529),
-					ArrowShow        = false,
-					ShowLabel         = false,
-					GroupName         = "lockers"
-				})
-			end
-	
-	
-		end
-	
-		--if module.players then
-	
-	
-	
-		--	local listplayers = game.Players:GetChildren()
-		--	for _, player in ipairs(listplayers) do
-		--		if player ~= game.Players.LocalPlayer and player.Character ~= nil then
-		--			local character = player.Character
-		--			if not character:FindFirstChild("PlayerHighlight") then
-		--				local a = Instance.new("Highlight", workspace)
-		--				esps["PlayerHighlight"] = a
-		--				a.Name = "PlayerHighlight"
-		--				a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		--				a.Adornee = character
-		--				task.spawn(function()
-		--					repeat
-		--						task.wait(0.1)
-		--						if player == getBeast() then
-		--							a.FillColor = Color3.fromRGB(255,0,0)
-		--						else
-		--							a.FillColor = Color3.fromRGB(0,255,0)
-		--						end
-		--					until character == nil or a == nil
-		--				end)
-		--			end
-		--		end
-		--	end
-	
-	
-		--end
-	
-		--if module.pcs then
-	
-	
-	
-	
-		--	for _, obj in ipairs(game.Workspace:GetDescendants()) do
-		--		if obj.Name == "ComputerTable" and not obj:FindFirstChild("PCHighlight") then
-		--			local hili = Instance.new("Highlight", workspace)
-		--			esps["PCHighlight"] = hili
-		--			hili.Name = "PCHighlight"
-		--			hili.OutlineTransparency = 1
-		--			hili.Adornee = obj
-		--			hili.FillColor = obj:FindFirstChild("Screen").Color
-		--		end
-		--	end
-	
-	
-		--end
-	
-		--if module.pods then
-	
-	
-	
-		--	for _, obj in ipairs(game.Workspace:GetDescendants()) do
-		--		if obj.Name == "FreezePod" then
-		--			local hili = Instance.new("Highlight", workspace)
-		--			esps["PodsHighlight"] = hili
-		--			hili.Name = "PodsHighlight"
-		--			hili.OutlineTransparency = 1
-		--			hili.Adornee = obj
-		--			hili.FillColor = Color3.fromRGB(0, 200, 255)
-		--		end
-		--	end
-	
-		--end
-	
-	
-		--if module.exits then
-	
-	
-	
-		--	for _, obj in ipairs(game.Workspace:GetDescendants()) do
-		--		if obj.Name == "ExitDoor" and not obj:FindFirstChild("ExitsHighlight") then
-		--			local hili = Instance.new("Highlight", workspace)
-		--			esps["ExitsHighlight"] = hili
-		--			hili.Name = "ExitsHighlight"
-		--			hili.OutlineTransparency = 1
-		--			hili.Adornee = obj
-		--			hili.FillColor = Color3.fromRGB(255,255,0)
-		--		end
-		--	end
-	
-		--end
-	end
-	
-	
-	
-	
-	table.insert(module, {
-		Type = "Text",
-		Args = {"VISIÓN DE PARTIDA"}
-	})
-	
-	table.insert(module, {
-		Type = "ButtonGrid",
-		Toggleable = true, -- Recolors buttons for you onclick, you still need to save the state yourself
-		Args = {3, { -- 3 is the number of columns
-			Players = function(Self)
-	
-				if module.players then
-					module.players = false
-					reloadESP()
-				else
-					module.players = true
-					reloadESP()
-				end
-	
-	
-			end,
-			PCs = function(Self)
-	
-				if module.pcs then
-					module.pcs = false
-					reloadESP()
-				else
-					module.pcs = true
-					reloadESP()
-				end
-	
-			end,
-			Pods = function(Self)
-	
-				if module.pods then
-					module.pods = false
-					reloadESP()
-				else
-					module.pods = true
-					reloadESP()
-				end
-	
-	
-			end,
-			Exits = function(Self)
-	
-				if module.exits then
-					module.exits = false
-					reloadESP()
-				else
-					module.exits = true
-					reloadESP()
-				end
-	
-			end,
-			Lockers = function(Self)
-	
-				if module.lockers then
-					module.lockers = false
-					reloadESP()
-				else
-					module.lockers = true
-					reloadESP()
-				end
-	
-			end,
-		}
-		} 
-	})
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Hide arrows and labels", function(Self, state)
-			hideLabelsAndArrows = state
-			reloadESP()
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Text",
-		Args = {"Tools"}
-	})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Third person camera", function(Self)
-			game.Players.LocalPlayer.CameraMode = Enum.CameraMode.Classic
-			game.Players.LocalPlayer.CameraMaxZoomDistance = 400
-			
-			FUNCTIONS.notification("Camera unlocked for third person. Try zooming out!")
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Reload ESP", function(Self)
-			reloadESP()
-		end,}
-	})
-	
-	
-	local isGameActive = game:GetService("ReplicatedStorage"):WaitForChild("IsGameActive", 5)
-	local gameStatus = game:GetService("ReplicatedStorage"):WaitForChild("GameStatus", 5)
-	
-	if isGameActive and gameStatus then
-		isGameActive.Changed:Connect(function()
-			reloadESP()
-		end)
-		gameStatus.Changed:Connect(function()
-			reloadESP()
-		end)
-	end
-	
-	local root = game:GetService("Players").LocalPlayer.Character:WaitForChild("HumanoidRootPart")
-	
-	light = Instance.new("PointLight", root)
-	light.Brightness = 0
-	light.Range = 9999999999
-	
-	local wslock = false
-	local ws = 18
-	
-	local antifail = false
-	
-	
-	task.spawn(function() 
-		if game:GetService("RunService"):IsStudio() then return end -- :)
-	
-		local OldNameCall = nil
-	
-		OldNameCall = hookmetamethod(game, "__namecall", function(Self, ...)
-			local Args = {...}
-			local NamecallMethod = getnamecallmethod()
-	
-			if NamecallMethod == "FireServer" and Args[1] == "SetPlayerMinigameResult" and antifail then
-				print("Minigame result - Intercepting result to true")
-				Args[2] = true
-			end
-	
-			return OldNameCall(Self, unpack(Args))
-		end)
-	
-	end)
-	
-	
-	table.insert(module, {
-		Type = "ButtonGrid",
-		Toggleable = true,
-		Args = {3, {
-			Anti_PC_Error = function()
-				if antifail then antifail = false else antifail = true end
-			end,
-			Flashlight = function()
-				if light.Brightness == 0 then
-					light.Brightness = 2.5
-				else
-					light.Brightness = 0
-				end
-			end,
-		}}
-	})
-	
-	task.spawn(function()
-		while task.wait(0.1) do
-			if wslock then
-				root.Parent:WaitForChild("Humanoid").WalkSpeed = ws
-			end
-		end
-	end)
-	
-	table.insert(module, {
-		Type = "Input",
-		Args = {"Input a walkspeed", "Set & Lock", function(Self, text)
-			if not tonumber(text) then
-				FUNCTIONS.notification("Input isn't a valid number.")
-				return
-			end
-	
-			ws = tonumber(text)
-			wslock = true
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Unlock all", function()
-			wslock = false
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Text",
-		Args = {"Locking means your speed will stay the same no matter what. This means you will not be slow when crawling or jumping as beast."}
-	})
-	
-	repeat task.wait() until getgenv().Modules
-	getgenv().Modules[2] = module
-end
-local function CEBY_routine() -- Routine: StarterGui.TIESAS.Universal
-    local script = Instance.new("LocalScript")
-    script.Name = "Universal"
-    script.Parent = Converted["_TIESAS"]
-    local req = require
-    local require = function(obj)
-        local routine = routine_module_scripts[obj]
-        if routine then
-            return routine()
-        end
-        return req(obj)
-    end
-
-
-	local module = {}
-	module["gameId"] = 0 -- Restrict module to a certain game ID only. 0 allows all games.
-	if (module["gameId"] ~= game.GameId) and module["gameId"] ~= 0 then
-		script.Enabled = true
-	end
-	
-	local ts = game:GetService("TweenService")
-	local uis = game:GetService("UserInputService")
-	local rs = game:GetService("RunService")
-	local https = game:GetService("HttpService")
-	local Players = game:GetService("Players")
-	
-	local fu = require(script.Parent.FUNCTIONS)
-	local theme = require(script.Parent.Theme)
-	local espind = require(script.Parent.ESPIndicator)
-	local flyutility = require(script.Parent.FlyUtility)
-	local PointSave = require(script.Parent.PointSave)
-	
-	
-	local loopfovandws = false
-	local ctrlclicktp = false
-	local ws = 16
-	local fov = 70
-	
-	local hidden = false
-	
-	local TIESASPointSave = PointSave.new("TIESAS")
-	
-	function splitString(str,delim)
-		local broken = {}
-		if delim == nil then delim = "," end
-		for w in string.gmatch(str,"[^"..delim.."]+") do
-			table.insert(broken,w)
-		end
-		return broken
-	end
-	
-	function toTokens(str)
-		local tokens = {}
-		for op,name in string.gmatch(str,"([+-])([^+-]+)") do
-			table.insert(tokens,{Operator = op,Name = name})
-		end
-		return tokens
-	end
-	
-	function onlyIncludeInTable(tab,matches)
-		local matchTable = {}
-		local resultTable = {}
-		for i,v in pairs(matches) do matchTable[v.Name] = true end
-		for i,v in pairs(tab) do if matchTable[v.Name] then table.insert(resultTable,v) end end
-		return resultTable
-	end
-	
-	function removeTableMatches(tab,matches)
-		local matchTable = {}
-		local resultTable = {}
-		for i,v in pairs(matches) do matchTable[v.Name] = true end
-		for i,v in pairs(tab) do if not matchTable[v.Name] then table.insert(resultTable,v) end end
-		return resultTable
-	end
-	
-	function getPlayersByName(Name)
-		local Name,Len,Found = string.lower(Name),#Name,{}
-		for _,v in pairs(Players:GetPlayers()) do
-			if Name:sub(0,1) == '@' then
-				if string.sub(string.lower(v.Name),1,Len-1) == Name:sub(2) then
-					table.insert(Found,v)
-				end
-			else
-				if string.sub(string.lower(v.Name),1,Len) == Name or string.sub(string.lower(v.DisplayName),1,Len) == Name then
-					table.insert(Found,v)
-				end
-			end
-		end
-		return Found
-	end
-	
-	function getPlayer(list,speaker)
-		if list == nil then return {speaker.Name} end
-		local nameList = splitString(list,",")
-	
-		local foundList = {}
-	
-		for _,name in pairs(nameList) do
-			if string.sub(name,1,1) ~= "+" and string.sub(name,1,1) ~= "-" then name = "+"..name end
-			local tokens = toTokens(name)
-			local initialPlayers = Players:GetPlayers()
-	
-			for i,v in pairs(tokens) do
-				if v.Operator == "+" then
-					local tokenContent = v.Name
-					local foundCase = false
-	
-					if not foundCase then
-						initialPlayers = onlyIncludeInTable(initialPlayers,getPlayersByName(tokenContent))
-					end
-				else
-					local tokenContent = v.Name
-					local foundCase = false
-	
-					if not foundCase then
-						initialPlayers = removeTableMatches(initialPlayers,getPlayersByName(tokenContent))
-					end
-				end
-			end
-	
-			for i,v in pairs(initialPlayers) do table.insert(foundList,v) end
-		end
-	
-		local foundNames = {}
-		for i,v in pairs(foundList) do table.insert(foundNames,v.Name) end
-	
-		return foundNames[1]
-	end
-	
-	
-	
-	task.spawn(function()
-		rs.RenderStepped:Connect(function()
-			if loopfovandws then
-				workspace.CurrentCamera.FieldOfView = fov
-				if game.Players.LocalPlayer.Character then
-					if game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
-						game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = ws
-					end
-				end
-			end
-		end)
-	end)
-	
-	uis.InputBegan:Connect(function(inp, proc)
-		if proc then return end
-	
-		if uis:IsKeyDown(Enum.KeyCode.LeftControl) and inp.KeyCode == Enum.KeyCode.Y and hidden then
-			hidden = false
-			ts:Create(script.Parent.Menu.UIScale, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
-				Scale = 1
-			}):Play()
-		end
-	end)
-	
-	local function getPlayerMouse()
-		local player = game:GetService("Players").LocalPlayer
-		if player then
-			return player:GetMouse()
-		end
-		return nil
-	end
-	
-	-- Function to cast a ray from the cursor to the furthest object
-	local function getRayHitPosition()
-		local mouse = getPlayerMouse()
-		if not mouse then
-			return nil
-		end
-	
-		local camera = workspace.CurrentCamera
-		local unitRay = camera:ScreenPointToRay(mouse.X, mouse.Y)
-		local ray = Ray.new(unitRay.Origin, unitRay.Direction * 1000) -- Adjust the range as needed
-	
-		local part, position = workspace:FindPartOnRay(ray, game:GetService("Players").LocalPlayer.Character)
-	
-		if part then
-			return position
-		else
-			return nil
-		end
-	end
-	
-	uis.InputBegan:Connect(function(inp, proc)
-		if proc then return end
-	
-		if uis:IsKeyDown(Enum.KeyCode.LeftControl) and inp.UserInputType == Enum.UserInputType.MouseButton1 and ctrlclicktp then
-			local ray = getRayHitPosition()
-			if not ray then fu.notification("Couldn't find a place to teleport to.") return end
-			game.Players.LocalPlayer.Character:WaitForChild("HumanoidRootPart").CFrame = CFrame.new(ray)
-		end
-	end)
-	
-	if uis.AccelerometerEnabled then
-		uis.DeviceAccelerationChanged:Connect(function(acc)
-			if hidden and acc.Position.Magnitude > 28 then
-				hidden = false
-				ts:Create(script.Parent.Menu.UIScale, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
-					Scale = 1
-				}):Play()
-			end 
-		end)
-	end
-	
-	--local flyob = flyutility.new(Players.LocalPlayer)
-	
-	
-	module["Name"] = "Universal"
-	
-	local ts = game:GetService("TweenService")
-	
-	--table.insert(module, {
-	--	Type = "Text",
-	--	Args = {"Welcome to TIESAS! The open, free script hub."}
-	--})
-	
-	table.insert(module, {
-		Type = "Text",
-		Args = {"<font color='#FFFF00'>Another great script</font> by TIESAS developers below!"}
-	})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"AFEM Max - The best AI-powered emote script!", function()
-			loadstring(game:HttpGet("https://yarhm.mhi.im/scr?channel=afemmax"))()
-			fu.notification("AFEM has been executed.")
-		end,}
-	})
-	
-	
-	table.insert(module, {
-		Type = "Text",
-		Args = {"---"}
-	})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Join our Discord", function(Self)
-			if setclipboard then setclipboard("https://discord.gg/2jbYxvDkxr") end
-			fu.notification('Discord link has been copied to clipboard!')
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"OP Fly", function(Self, state)
-			if state then
-				flyutility:Start(Players.LocalPlayer.Character)
-			else
-				flyutility:Stop(Players.LocalPlayer.Character)
-			end
-		end}
-	})
-	
-	table.insert(module, {
-		Type = "Range",
-		Args = {"Fly speed", 50, 350, 10, function(Self, spd)
-			--print(spd)
-			flyutility:SetMaxSpeed(spd)
-		end}
-	})
-	
-	local infJump = false
-	local infJumpConnection = nil
-	local landedConnection = nil
-	
-	local infJumps = 0
-	local infJumpDeb = false
-	local infJumpOnlyTwo = false
-	local landed = true
-	
-	local function setupHumanoid(humanoid)
-		if landedConnection then landedConnection:Disconnect() end
-	
-		landedConnection = humanoid.StateChanged:Connect(function(_, n)
-			if n == Enum.HumanoidStateType.Landed or n == Enum.HumanoidStateType.Running then
-	
-				landed = true
-				infJumps = 0
-			end
-		end)
-	end
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Infinite jump", function(Self, state)
-			infJump = state
-	
-			if state then
-				local char = game.Players.LocalPlayer.Character
-				if char and char:FindFirstChildWhichIsA("Humanoid") then
-					setupHumanoid(char:FindFirstChildWhichIsA("Humanoid"))
-				end
-	
-				infJumpConnection = uis.JumpRequest:Connect(function()
-					local character = game.Players.LocalPlayer.Character
-					local humanoid = character and character:FindFirstChildWhichIsA("Humanoid")
-	
-					if not humanoid then return end
-	
-					if infJumpOnlyTwo and infJumps >= 2 and not landed then
-						--print(infJumpOnlyTwo)
-						--print(infJumps)
-						--print(landed)
-						return end
-	
-					if not infJumpDeb then
-						infJumpDeb = true
-						humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-						infJumps += 1
-						landed = false
-	
-						task.wait(.1)
-						infJumpDeb = false
-					end
-				end)
-			else
-				if infJumpConnection then infJumpConnection:Disconnect() end
-				if landedConnection then landedConnection:Disconnect() end
-				infJumps = 0
-				landed = true
-			end
-		end}
-	})
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Limit infinite jump to 2 jumps only", function(Self, state)
-			infJumpOnlyTwo = state
-			infJumps = 0 
-		end}
-	})
-	
-	
-	local aggressiveExp = false
-	local hitboxExp = 1
-	table.insert(module, {
-		Type = "Input",
-		Args = {"Hitbox expander", "Expand everyone's hitbox", function(Self, ToExpand)
-			hitboxExp = ToExpand
-			local players = game:GetService("Players"):GetPlayers()
-			for i,v in ipairs(players) do
-				if v ~= game.Players.LocalPlayer and v.Character:FindFirstChild('HumanoidRootPart') then
-					local sizeArg = tonumber(ToExpand)
-					local Size = Vector3.new(sizeArg,sizeArg,sizeArg)
-					if aggressiveExp then
-						for _, part in ipairs(v.Character:GetChildren()) do
-							if part:IsA("BasePart") then
-								if not ToExpand or sizeArg == 1 then
-									part.Size = Vector3.new(2,1,1)
-									part.Transparency = 0.2
-								else
-									part.Size = Size
-									part.Transparency = 0.2
-								end
-								--part.CanCollide = false
-							end
-						end
-					else
-						local Root = v.Character:FindFirstChild('HumanoidRootPart')
-						if Root:IsA("BasePart") then
-							if not ToExpand or sizeArg == 1 then
-								Root.Size = Vector3.new(2,1,1)
-								Root.Transparency = 0.2
-							else
-								Root.Size = Size
-								Root.Transparency = 0.2
-							end
-							Root.CanCollide = false
-						end
-					end
-				end
-			end
-			fu.notification("Hitboxes expanded.")
-		end,}
-	})
-	
-	local loopHitBoxExp
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Loop hitbox expansion", function(Self, state)
-			if state then
-				loopHitBoxExp = rs.Heartbeat:Connect(function()
-					local players = game:GetService("Players"):GetPlayers()
-					for i,v in ipairs(players) do
-						if v ~= game.Players.LocalPlayer and v.Character:FindFirstChild('HumanoidRootPart') then
-							local sizeArg = tonumber(hitboxExp)
-							local Size = Vector3.new(sizeArg,sizeArg,sizeArg)
-							local Root = v.Character:FindFirstChild('HumanoidRootPart')
-							if aggressiveExp then
-								for _, part in ipairs(v.Character:GetChildren()) do
-									if part:IsA("BasePart") then
-										if not hitboxExp or sizeArg == 1 then
-											part.Size = Vector3.new(2,1,1)
-											part.Transparency = 0.2
-										else
-											part.Size = Size
-											part.Transparency = 0.2
-										end
-										--part.CanCollide = false
-									end
-								end
-							else
-								local Root = v.Character:FindFirstChild('HumanoidRootPart')
-								if Root:IsA("BasePart") then
-									if not hitboxExp or sizeArg == 1 then
-										Root.Size = Vector3.new(2,1,1)
-										Root.Transparency = 0.2
-									else
-										Root.Size = Size
-										Root.Transparency = 0.2
-									end
-									Root.CanCollide = false
-								end
-							end
-						end
-					end
-				end)
-			else
-				loopHitBoxExp:Disconnect()
-			end
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Aggressive hitbox expasion (all parts)", function(Self, state)
-			aggressiveExp = state
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Input",
-		Args = {"Walkspeed", "Set speed", function(Self, speed)
-			local lp = game:GetService("Players").LocalPlayer
-			local char = lp.Character
-			if not char then fu.notification("No character!") return end
-			local hu = char:FindFirstChildOfClass("Humanoid")
-			if not hu then fu.notification("No humanoid on your character..?") return end
-			hu.WalkSpeed = tonumber(speed) or 16
-			fu.notification("Walkspeed set.")
-			ws = tonumber(speed) or 16
-		end,}
-	})
-	
-	
-	local walkspeedInDeCrement = 2
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Increase walkspeed", function(Self)
-			local lp = game:GetService("Players").LocalPlayer
-			local char = lp.Character
-			if not char then fu.notification("No character!") return end
-			local hu = char:FindFirstChildOfClass("Humanoid")
-			if not hu then fu.notification("No humanoid on your character..?") return end
-			ws = ws + walkspeedInDeCrement
-			hu.WalkSpeed = hu.WalkSpeed + walkspeedInDeCrement
-			fu.notification("Walkspeed is now ".. hu.WalkSpeed)
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Decrease walkspeed", function(Self)
-			local lp = game:GetService("Players").LocalPlayer
-			local char = lp.Character
-			if not char then fu.notification("No character!") return end
-			local hu = char:FindFirstChildOfClass("Humanoid")
-			if not hu then fu.notification("No humanoid on your character..?") return end
-			ws = ws - walkspeedInDeCrement
-			hu.WalkSpeed = hu.WalkSpeed - walkspeedInDeCrement
-			fu.notification("Walkspeed is now ".. hu.WalkSpeed)
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Input",
-		Args = {"Walkspeed increment (How big each increase/decrease is)", "Set", function(Self, input)
-			walkspeedInDeCrement = tonumber(input) or 2
-			if not tonumber(input) then fu.notification("Not a number. Setting to default (2).") end
-			fu.notification("Set walkspeed increment to ".. walkspeedInDeCrement)
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Input",
-		Args = {"FOV change", "Set FOV", function(Self, tofov)
-			if not tonumber(tofov) then fu.notification("Not a number. Setting to default.") end
-			ts:Create(workspace.CurrentCamera, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
-				FieldOfView = tonumber(tofov) or 70
-			}):Play()
-			fov = tonumber(tofov) or 70
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Loop walkspeed and FOV", function(Self, state)
-			loopfovandws = state
-		end,}
-	})
-	
-	
-	if uis.KeyboardEnabled and uis.MouseEnabled then
-		table.insert(module, {
-			Type = "Toggle",
-			Args = {"CTRL+Click Teleport", function(Self, state)
-				ctrlclicktp = state
-			end,}
-		})
-	end
-	
-	table.insert(module, {
-		Type = "Text",
-		Args = {"Teleports"}
-	})
-	
-	local function gotoPlayer(targetPlayerName)
-		local targetPlayer = Players:FindFirstChild(getPlayer(targetPlayerName, game.Players.LocalPlayer))
-		if targetPlayer then
-			local character = targetPlayer.Character
-			if character and character:FindFirstChild("HumanoidRootPart") then
-				local targetPosition = character.HumanoidRootPart.Position
-				local playerCharacter = Players.LocalPlayer.Character
-				if playerCharacter and playerCharacter:FindFirstChild("HumanoidRootPart") then
-					playerCharacter.HumanoidRootPart.CFrame = CFrame.new(targetPosition + Vector3.new(0, 5, 0))
-				end
-			end
-		else
-			print("Player '" .. targetPlayerName .. "' not found.")
-		end
-	end
-	
-	table.insert(module, {
-		Type = "Input",
-		Args = {
-			"Enter player's name", 
-			"Teleport", 
-			function(Self, text)
-				gotoPlayer(text)
-			end
-		}
-	})
-	
-	local spectateLoop = nil
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Spectate players", function(Self)
-			local listofplayers = game.Players:GetPlayers()
-			local currentlyViewing = 1
-			local currentPlayer = listofplayers[currentlyViewing]
-			if not currentPlayer then return end
-			workspace.CurrentCamera.CameraSubject = currentPlayer.Character.Humanoid
-			spectateLoop = task.spawn(function()
-				while true do
-					fu.dialog("Spectating...", "Now spectating: " .. workspace.CurrentCamera.CameraSubject.Parent.Name, {"Previous", "Stop", "Next"})
-					local action = fu.waitfordialog()
-					if action == "Stop" then
-						fu.closedialog()
-						workspace.CurrentCamera.CameraSubject = game.Players.LocalPlayer.Character.Humanoid
-						task.cancel(spectateLoop)
-						break
-					elseif action == "Next" then
-						currentlyViewing = currentlyViewing + 1
-						if currentlyViewing > #listofplayers then
-							currentlyViewing = 1
-						end
-						currentPlayer = listofplayers[currentlyViewing]
-						if not currentPlayer then return end
-						workspace.CurrentCamera.CameraSubject = currentPlayer.Character.Humanoid
-					elseif action == "Previous" then
-						currentlyViewing = currentlyViewing - 1
-						if currentlyViewing < 1 then
-							currentlyViewing = #listofplayers
-						end
-						currentPlayer = listofplayers[currentlyViewing]
-						if not currentPlayer then return end
-						workspace.CurrentCamera.CameraSubject = currentPlayer.Character.Humanoid
-					end
-				end
-	
-			end)
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Text",
-		Args = {"Aim locking"}
-	})
-	
-	local aimlockrscon
-	local target
-	
-	table.insert(module, {
-		Type = "Input",
-		Args = {"Target player", "Set target", function(Self, input)
-			if not Players:FindFirstChild(getPlayer(input, game.Players.LocalPlayer)) then
-				fu.notification("Player not found.")
-				return
-			end
-			fu.notification("Target is set to " .. Players:FindFirstChild(getPlayer(input, game.Players.LocalPlayer)).Name)
-			target = Players:FindFirstChild(getPlayer(input, game.Players.LocalPlayer))
-		end,}
-	})
-	
-	local aimlock = false
-	local cam = workspace.CurrentCamera
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Aim lock", function(Self)
-			if aimlock then return end
-			if aimlockrscon then aimlockrscon:Disconnect() end
-			if not target then fu.notification("Set a target first.") return end
-			aimlockrscon = rs.RenderStepped:Connect(function()
-				if not target then fu.notification("No valid target.") aimlockrscon:Disconnect() return end
-				if not target.Character then return end
-				if not target.Character:FindFirstChild("HumanoidRootPart") then return end
-				cam.CFrame = CFrame.new(cam.CFrame.Position, target.Character:FindFirstChild("HumanoidRootPart").Position)
-			end)
-			aimlock = true
-			fu.notification("Aim lock is now on.")
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Unaim lock", function(Self)
-			if not aimlock then return end
-			aimlock = false
-			if aimlockrscon then aimlockrscon:Disconnect() end
-			fu.notification("Aim lock is now off.")
-		end,}
-	})
-	
-	
-	
-	
-	table.insert(module, {
-		Type = "Text",
-		Args = {"Fling"}
-	})
-	
-	local playerToFling
-	table.insert(module, {
-		Type = "Input",
-		Args = {"Target fling player", "Set target", function(Self, input)
-			if not Players:FindFirstChild(getPlayer(input, game.Players.LocalPlayer)) then
-				fu.notification("Player not found.")
-				return
-			end
-			fu.notification("Target is set to " .. Players:FindFirstChild(getPlayer(input, game.Players.LocalPlayer)).Name)
-			playerToFling = Players:FindFirstChild(getPlayer(input, game.Players.LocalPlayer))
-		end,}
-	})
-	
-	
-	local antiFling = false
-	table.insert(module, {
-		Type = "ButtonGrid",
-		Args = {1, {
-	
-			Fling = function(Self)
-				if not playerToFling then
-					fu.notification("You need to target a player to fling.")
-					return
-				end
-				if not Players:FindFirstChild(playerToFling.Name) then
-					fu.notification("You need to target a player to fling.")
-					return
-				end
-				if antiFling then
-					fu.notification("Turn off anti-fling to use fling.")
-					return
-				end
-	
-				local player = game.Players.LocalPlayer
-				local mouse = player:GetMouse()
-				local Targets = {playerToFling}
-	
-				local Players = game:GetService("Players")
-				local Player = Players.LocalPlayer
-	
-				local AllBool = false
-	
-				local SkidFling = function(TargetPlayer)
-					local Character = Player.Character
-					local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
-					local RootPart = Humanoid and Humanoid.RootPart
-	
-					local TCharacter = TargetPlayer.Character
-					local THumanoid
-					local TRootPart
-					local THead
-					local Accessory
-					local Handle
-	
-					if TCharacter:FindFirstChildOfClass("Humanoid") then
-						THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
-					end
-					if THumanoid and THumanoid.RootPart then
-						TRootPart = THumanoid.RootPart
-					end
-					if TCharacter:FindFirstChild("Head") then
-						THead = TCharacter.Head
-					end
-					if TCharacter:FindFirstChildOfClass("Accessory") then
-						Accessory = TCharacter:FindFirstChildOfClass("Accessory")
-					end
-					if Accessory and Accessory:FindFirstChild("Handle") then
-						Handle = Accessory.Handle
-					end
-	
-					if Character and Humanoid and RootPart then
-						if RootPart.Velocity.Magnitude < 50 then
-							getgenv().OldPos = RootPart.CFrame
-						end
-						if THumanoid and THumanoid.Sit and not AllBool then
-						end
-						if THead then
-							if THead.Velocity.Magnitude > 500 then
-								fu.dialog("Player flung", "Player is already flung. Fling again?", {"Fling again", "No"})
-								if fu.waitfordialog() == "No" then return fu.closedialog() end
-								fu.closedialog()
-							end
-						elseif not THead and Handle then
-							if Handle.Velocity.Magnitude > 500 then
-								fu.dialog("Player flung", "Player is already flung. Fling again?", {"Fling again", "No"})
-								if fu.waitfordialog() == "No" then return fu.closedialog() end
-								fu.closedialog()
-							end
-						end
-	
-	
-						if THead then
-							workspace.CurrentCamera.CameraSubject = THead
-						elseif not THead and Handle then
-							workspace.CurrentCamera.CameraSubject = Handle
-						elseif THumanoid and TRootPart then
-							workspace.CurrentCamera.CameraSubject = THumanoid
-						end
-						if not TCharacter:FindFirstChildWhichIsA("BasePart") then
-							return
-						end
-	
-						local FPos = function(BasePart, Pos, Ang)
-							RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
-							Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
-							RootPart.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
-							RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
-						end
-	
-						local SFBasePart = function(BasePart)
-							local TimeToWait = 2
-							local Time = tick()
-							local Angle = 0
-	
-							repeat
-								if RootPart and THumanoid then
-									if BasePart.Velocity.Magnitude < 50 then
-										Angle = Angle + 100
-	
-										FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(2.25, 1.5, -2.25) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(-2.25, -1.5, 2.25) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection,CFrame.Angles(math.rad(Angle), 0, 0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection,CFrame.Angles(math.rad(Angle), 0, 0))
-										task.wait()
-									else
-										FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(0, 1.5, TRootPart.Velocity.Magnitude / 1.25), CFrame.Angles(math.rad(90), 0, 0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(0, -1.5, -TRootPart.Velocity.Magnitude / 1.25), CFrame.Angles(0, 0, 0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(0, 1.5, TRootPart.Velocity.Magnitude / 1.25), CFrame.Angles(math.rad(90), 0, 0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(0, -1.5 ,0), CFrame.Angles(math.rad(-90), 0, 0))
-										task.wait()
-	
-										FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
-										task.wait()
-									end
-								else
-									break
-								end
-							until BasePart.Velocity.Magnitude > 500 or BasePart.Parent ~= TargetPlayer.Character or TargetPlayer.Parent ~= Players or TargetPlayer.Character ~= TCharacter or THumanoid.Sit or Humanoid.Health <= 0 or tick() > Time + TimeToWait
-						end
-	
-						workspace.FallenPartsDestroyHeight = 0/0
-	
-						local BV = Instance.new("BodyVelocity")
-						BV.Name = "EpixVel"
-						BV.Parent = RootPart
-						BV.Velocity = Vector3.new(9e8, 9e8, 9e8)
-						BV.MaxForce = Vector3.new(1/0, 1/0, 1/0)
-	
-						Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
-	
-						if TRootPart and THead then
-							if (TRootPart.CFrame.p - THead.CFrame.p).Magnitude > 5 then
-								SFBasePart(THead)
-							else
-								SFBasePart(TRootPart)
-							end
-						elseif TRootPart and not THead then
-							SFBasePart(TRootPart)
-						elseif not TRootPart and THead then
-							SFBasePart(THead)
-						elseif not TRootPart and not THead and Accessory and Handle then
-							SFBasePart(Handle)
-						else
-							fu.notification("Can't find a proper part of target player to fling.")
-						end
-	
-						BV:Destroy()
-						Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
-						workspace.CurrentCamera.CameraSubject = Humanoid
-	
-						repeat
-							RootPart.CFrame = getgenv().OldPos * CFrame.new(0, .5, 0)
-							Character:SetPrimaryPartCFrame(getgenv().OldPos * CFrame.new(0, .5, 0))
-							Humanoid:ChangeState("GettingUp")
-							table.foreach(Character:GetChildren(), function(_, x)
-								if x:IsA("BasePart") then
-									x.Velocity, x.RotVelocity = Vector3.new(), Vector3.new()
-								end
-							end)
-							task.wait()
-						until (RootPart.Position - getgenv().OldPos.p).Magnitude < 25
-						workspace.FallenPartsDestroyHeight = getgenv().FPDH
-					else
-						fu.notification("No valid character of said target player. May have died.")
-					end
-				end
-				SkidFling(Targets[1])
-				-- this whole thing is skidded LMAOO
-			end,
-	
-			--Stop_Fling = function(Self)
-			--	if game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart"):FindFirstChild("BodyAngularVelocity") then
-			--		game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart"):FindFirstChild("BodyAngularVelocity"):Destroy()
-			--	end
-			--end,
-		}
-		}
-	})
-	
-	
-	local antiFlingLastPos = Vector3.zero
-	local flingNeutralizerCon
-	local flingDetectionCon
-	local detectedPlayers = {}
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Anti-fling", function(Self, state)
-			antiFling = state
-			if state then
-				fu.notification("Anti-fling activated.")
-				flingDetectionCon = rs.Heartbeat:Connect(function()
-					for _, pl in ipairs(game:GetService("Players"):GetPlayers()) do
-						if pl.Character:IsDescendantOf(workspace) then
-							if pl.Character.PrimaryPart.AssemblyAngularVelocity.Magnitude > 50 or pl.Character.PrimaryPart.AssemblyLinearVelocity.Magnitude > 100 then
-								if not detectedPlayers[pl.Name] then
-									fu.notification("A flinger has been detected with the name " .. pl.Name .. "!")
-									detectedPlayers[pl.Name] = true	
-								end
-	
-								for _, p in ipairs(pl.Character:GetDescendants()) do
-									if p:IsA("BasePart") then
-										p.CanCollide = false
-										p.AssemblyAngularVelocity = Vector3.zero
-										p.AssemblyLinearVelocity = Vector3.zero
-										p.CustomPhysicalProperties = PhysicalProperties.new(0,0,0)
-									end
-								end
-							end
-						end
-					end
-				end)
-	
-				flingNeutralizerCon = rs.Heartbeat:Connect(function()
-					if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character.PrimaryPart then
-						if game.Players.LocalPlayer.Character.PrimaryPart.AssemblyLinearVelocity.Magnitude > 250 or  game.Players.LocalPlayer.Character.PrimaryPart.AssemblyAngularVelocity.Magnitude > 250 then
-							fu.notification("You were flung. Neutralizing velocity!")
-							game.Players.LocalPlayer.Character.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
-							game.Players.LocalPlayer.Character.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
-							if antiFlingLastPos ~= Vector3.zero then
-								game.Players.LocalPlayer.Character.PrimaryPart.CFrame = CFrame.new(antiFlingLastPos)
-							end
-						else
-							antiFlingLastPos = game.Players.LocalPlayer.Character.PrimaryPart.Position
-						end
-					end
-				end)
-			else
-				flingDetectionCon:Disconnect()
-				flingNeutralizerCon:Disconnect()
-				detectedPlayers = {}
-				fu.notification("Anti-fling deactivated.")
-			end
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Text",
-		Args = {"Miscellaneous"}
-	})
-	
-	-- taken (corporate term for skidded) from infyiff
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Anti AFK detection", function(Self)
-			local pl = game.Players.LocalPlayer
-			if getconnections then
-				for _, connection in pairs(getconnections(pl.Idled)) do
-					if connection["Disable"] then
-						connection["Disable"](connection)
-					elseif connection["Disconnect"] then
-						connection["Disconnect"](connection)
-					end
-				end
-			else
-				pl.Idled:Connect(function()
-					game:GetService("VirtualUser"):CaptureController()
-					game:GetService("VirtualUser"):ClickButton2(Vector2.new())
-				end)
-			end
-			
-		end,}
-	})
-	
-	--table.insert(module, {
-	--	Type = "Dropdown",
-	--	Args = {"Player to fling", function()
-	--		local playersAsStrings = {"None"}
-	--		for _, p in ipairs(game.Players:GetPlayers()) do
-	--			table.insert(playersAsStrings, p.Name)
-	--		end
-	--		return playersAsStrings
-	--	end,
-	
-	--	function(Self, selected)
-	--		print(selected)
-	--	end,}
-	--})
-	
-	pcall(function()
-		if game:GetService("CoreGui"):FindFirstChild("DeltaIcon") then
-			table.insert(module, {
-				Type = "Toggle",
-				Args = {"Hide Delta Icon", function(Self, state)
-					game:GetService("CoreGui"):FindFirstChild("DeltaIcon").Enabled = state
-				end,}
-			})
-		end
-	end)
-	
-	
-	
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Hide TIESAS", function(Self)
-			if uis.KeyboardEnabled then
-				ts:Create(script.Parent.Menu.UIScale, TweenInfo.new(0.6, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
-					Scale = 0
-				}):Play()
-				hidden=true
-				fu.notification("Press CTRL+SHIFT+Y to bring back the menu.")
-			elseif uis.AccelerometerEnabled then
-				ts:Create(script.Parent.Menu.UIScale, TweenInfo.new(0.6, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
-					Scale = 0
-				}):Play()
-				hidden=true
-				fu.notification("Shake your device to bring back the menu.")
-			else
-				fu.notification("Can't hide TIESAS!") -- how else are you gonna open???
-			end
-		end,}
-	}
-	)
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"FPS Boost", function(Self)
-			fu.dialog("FPS boosting", "FPS boosting can have unpredictable effects. You may instead lag more using this!", {"FPS boost anyway", "Nevermind"})
-			local result = fu.waitfordialog()
-			fu.closedialog()
-			if result == "FPS boost anyway" then
-				local Terrain = workspace:FindFirstChildOfClass('Terrain')
-				Terrain.WaterWaveSize = 0
-				Terrain.WaterWaveSpeed = 0
-				Terrain.WaterReflectance = 0
-				Terrain.WaterTransparency = 0
-				game.Lighting.GlobalShadows = false
-				game.Lighting.FogEnd = 9e9
-				pcall(function()
-					settings().Rendering.QualityLevel = 1
-				end)
-				for i,v in pairs(game:GetDescendants()) do
-					if v:IsA("Part") or v:IsA("UnionOperation") or v:IsA("MeshPart") or v:IsA("CornerWedgePart") or v:IsA("TrussPart") then
-						v.Material = "Plastic"
-						v.Reflectance = 0
-					elseif v:IsA("Decal") then
-						v.Transparency = 1
-					elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
-						v.Lifetime = NumberRange.new(0)
-					elseif v:IsA("Explosion") then
-						v.BlastPressure = 1
-						v.BlastRadius = 1
-					end
-				end
-				for i,v in pairs(game.Lighting:GetDescendants()) do
-					if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect") then
-						v.Enabled = false
-					end
-				end
-				workspace.DescendantAdded:Connect(function(child)
-					task.spawn(function()
-						if child:IsA('ForceField') then
-							rs.Heartbeat:Wait()
-							child:Destroy()
-						elseif child:IsA('Sparkles') then
-							rs.Heartbeat:Wait()
-							child:Destroy()
-						elseif child:IsA('Smoke') or child:IsA('Fire') then
-							rs.Heartbeat:Wait()
-							child:Destroy()
-						end
-					end)
-				end)
-			end
-		end,}
-	})
-	
-	local rsloopconnectionfling
-	local clip = true
-	local nocliploop
-	
-	
-	table.insert(module, {
-		Type = "ButtonGrid",
-		Args = {2, {
-			Noclip = function()
-				clip = false
-				nocliploop = rs.Stepped:Connect(function()
-					if clip == false and game.Players.LocalPlayer.Character ~= nil then
-						for _, child in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
-							if child:IsA("BasePart") and child.CanCollide == true then
-								child.CanCollide = false
-							end
-						end
-					end
-				end)
-			end,
-	
-			Reclip = function()
-				if clip then return end
-				clip = true
-				nocliploop:Disconnect()
-				fu.notification("Reclipping may need you to reset your character.")
-			end,
-		}}})
-	
-	
-	
-	table.insert(module, {
-		Type = "Text",
-		Args = {"Other"}
-	})
-	
-	--table.insert(module, {
-	--	Type = "Button",
-	--	Args = {"Lock/unlock a floating button", function()
-	--		fu.lockMode = true
-	--		fu.notification("Click/tap a floating button to lock/unlock...")
-	--	end,}
-	--})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Get ping", function(Self)
-			fu.notification(game.Players.LocalPlayer:GetNetworkPing() * 1000)
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Open developer console (debugging)", function(Self)
-			game.StarterGui:SetCore("DevConsoleVisible", true)
-			--getgenv().TIESAS.Open.UIStroke.Transparency = 0
-			--getgenv().TIESAS.Open.TextTransparency = 0
-			--ts:Create(getgenv().TIESAS.Open, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
-			--	Position = UDim2.fromScale(0.5, 0.903)
-			--}):Play()
-	
-			--ts:Create(getgenv().TIESAS.Open.UIStroke, TweenInfo.new(1), {
-			--	Transparency = 1
-			--}):Play()
-			--ts:Create(getgenv().TIESAS.Open, TweenInfo.new(1), {
-			--	TextTransparency = 1
-			--}):Play()
-		end}
-	}
-	)
-	
-	function themeSerialize(data)
-		local function s(v)
-			local t = typeof(v)
-			if t == "number" or t == "string" or t == "boolean" then
-				return v
-			elseif t == "Color3" then
-				return {__type="Color3", r=math.floor(v.R*255+0.5), g=math.floor(v.G*255+0.5), b=math.floor(v.B*255+0.5)}
-			elseif t == "EnumItem" then
-				return {__type="EnumItem", enumType=v.EnumType.Name, name=v.Name}
-			elseif t == "ColorSequence" then
-				local kp = {}
-				for _, k in ipairs(v.Keypoints) do
-					table.insert(kp, {t=k.Time, v={r=math.floor(k.Value.R*255+0.5), g=math.floor(k.Value.G*255+0.5), b=math.floor(k.Value.B*255+0.5)}})
-				end
-				return {__type="ColorSequence", keypoints=kp}
-			elseif t == "table" then
-				local out = {}
-				for k, val in pairs(v) do
-					if k ~= "font" then out[k] = s(val) end
-				end
-				return out
-			else
-				error("Unsupported type: " .. t)
-			end
-		end
-		return s(data)
-	end
-	
-	function themeDeserialize(data)
-		local function d(v)
-			if typeof(v) ~= "table" then return v end
-			if v.__type == "Color3" then
-				return Color3.fromRGB(v.r, v.g, v.b)
-			elseif v.__type == "EnumItem" then
-				local e = Enum[v.enumType] return e and e[v.name] or nil
-			elseif v.__type == "ColorSequence" then
-				local kps = {}
-				for _, k in ipairs(v.keypoints) do
-					table.insert(kps, ColorSequenceKeypoint.new(k.t, Color3.fromRGB(k.v.r, k.v.g, k.v.b)))
-				end
-				return ColorSequence.new(kps)
-			else
-				local out = {}
-				for k, val in pairs(v) do out[k] = d(val) end
-				return out
-			end
-		end
-		return d(data)
-	end
-	
-	table.insert(module, {
-		Type = "Text",
-		Args = {"Theme"}
-	})
-	
-	local function loadThemeFromSave(last)
-		if not last then task.wait(1) else task.wait(0.2) end
-		if TIESASPointSave:get("TIESASGlobal_themeCode") then
-			local themeObjectImport = themeDeserialize(https:JSONDecode(fu.from_base64(TIESASPointSave:get("TIESASGlobal_themeCode"))))
-			theme:setColorTable(themeObjectImport)
-			theme:init(getgenv().TIESAS)
-	
-			fu.setTheme(themeObjectImport)
-	
-			fu.refreshlist()
-			fu.refresharea()
-			if not last then loadThemeFromSave(true) end -- im getting desperate
-		end
-	end
-	
-	table.insert(module, {
-		Type = "Input",
-		Args = {
-			"Theme code",
-			"Apply",
-			function(obj, value)
-				local themeObjectImport = themeDeserialize(https:JSONDecode(fu.from_base64(value)))
-				theme:setColorTable(themeObjectImport)
-				theme:init(getgenv().TIESAS)
-				
-				fu.setTheme(themeObjectImport)
-				
-				fu.refreshlist()
-				fu.refresharea()
-				fu.notification("Successfully applied theme!")
-				
-				TIESASPointSave:set("TIESASGlobal_themeCode", value)
-			end
-		}
-	})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Reload theme", function()
-			theme:init(getgenv().TIESAS)
-	
-			fu.refreshlist()
-			fu.refresharea()
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Delete theme from save", function()
-			TIESASPointSave:remove("TIESASGlobal_themeCode")
-			
-			fu.notification("Theme will not be restored on the next executes.")
-		end,}
-	})
-	
-	task.spawn(loadThemeFromSave)
-	
-	
-	
-	--task.spawn(function()
-	--	local success, titles = pcall(function()
-	--		return https:JSONDecode(game:HttpGet("https://yarhm.mhi.im/static/ingametitles.json"))
-	--	end)
-	
-	--	if not success then
-	--		titles = {}
-	--	end
-	
-	--	local function applyTag(player)
-	--		local data = titles[player.Name]
-	--		if data and player.Character then
-	--			local head = player.Character:FindFirstChild("Head")
-	--			if head then
-	--				espind:Remove(head)
-	--				espind:Add(head, {
-	--					ShowLabel = true,
-	--					LabelText = data.text,
-	--					AccentColor = Color3.fromHex(data.color),
-	--					LabelMaxDistance = 50,
-	--					LabelOffset = Vector3.new(0, 2, 0),
-	--					GroupName = "UserTags"
-	--				})
-	--			end
-	--		end
-	--	end
-	
-	--	local function onCharacterAdded(player)
-	--		player.CharacterAdded:Connect(function(character)
-	--			task.wait(1) -- small delay
-	--			applyTag(player)
-	--		end)
-	--	end
-	
-	--	for _, player in ipairs(Players:GetPlayers()) do
-	--		applyTag(player)
-	--		onCharacterAdded(player)
-	--	end
-	
-	--	Players.PlayerAdded:Connect(function(player)
-	--		onCharacterAdded(player)
-	--	end)
-	--end)
-	
-	--table.insert(module, {
-	--	Type = "Toggle",
-	--	Args = {"Hide TIESAS+/Developer tags", function(_, state)
-	--		local group = espind:GetGroup("UserTags")
-	--		if group then
-	--			espind:ToggleGroup("UserTags", not state)
-	--		end
-	--	end
-	--	}
-	--})
-	
-	
-	--table.insert(module, {
-	--	Type = "Dropdown",
-	--	Args = {"how rizz is yarhm", {"very rizz", "no rizz"}, function(Self, item)
-	--		print(item)
-	--	end,}
-	--})
-	
-	repeat task.wait() until getgenv().Modules
-	getgenv().Modules[1] = module
-end
 local function DSZIHQM_routine() -- Routine: StarterGui.TIESAS.Init
     local script = Instance.new("LocalScript")
     script.Name = "Init"
@@ -4922,6 +3361,7 @@ local function DSZIHQM_routine() -- Routine: StarterGui.TIESAS.Init
 
 
 	getgenv().Modules = {}
+	getgenv().TIESAS_MODULES_READY = false
 	
 	local ts = game:GetService("TweenService")
 	
@@ -5002,6 +3442,17 @@ local function DSZIHQM_routine() -- Routine: StarterGui.TIESAS.Init
 	ts:Create(script.Parent.Menu.CanvasGroup, TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), 
 		{GroupTransparency = 1}
 	):Play()
+
+	-- MM2 y la interfaz arrancaban en paralelo y ambos reconstruían el panel.
+	-- Esperar una única señal elimina el panel vacío, la doble creación de
+	-- controles y la carrera que podía borrar SHOOT.
+	local moduleDeadline = os.clock() + 8
+	repeat
+		task.wait(0.05)
+	until not appRuntime.alive
+		or getgenv().TIESAS_MODULES_READY
+		or os.clock() >= moduleDeadline
+	if not appRuntime.alive then return end
 	require(script.Parent.FUNCTIONS).refreshlist()
 	require(script.Parent.FUNCTIONS).refresharea()
 	task.wait(0.5)
@@ -5014,362 +3465,18 @@ local function DSZIHQM_routine() -- Routine: StarterGui.TIESAS.Init
 	task.wait(1)
 	require(script.Parent.FUNCTIONS).loadFloatingButtons()
 	require(script.Parent.Theme):init(getgenv().TIESAS)
+	script.Parent.Menu.Visible = true
+	script.Parent.Open.Visible = false
+	script.Parent.Dropdown.Visible = false
+	script.Parent.Dialog.Visible = false
+	require(script.Parent.FUNCTIONS).notification(
+		"Menú, ESP y SHOOT listos. Minimiza el menú para dejar visible el botón TS."
+	)
 	
 	--require(script.Parent.FUNCTIONS).refreshlist()
 	--require(script.Parent.FUNCTIONS).refresharea()
 	
 	--getgenv().ThemeManager:init(script.Parent)
-end
-local function EXEKBZ_routine() -- Routine: StarterGui.TIESAS.Forsaken
-    local script = Instance.new("LocalScript")
-    script.Name = "Forsaken"
-    script.Parent = Converted["_TIESAS"]
-    local req = require
-    local require = function(obj)
-        local routine = routine_module_scripts[obj]
-        if routine then
-            return routine()
-        end
-        return req(obj)
-    end
-
-
-	-- Module setup
-	local module = {}
-	module.gameId = 6331902150
-	module.Name = "Forsaken"
-	
-	local fu = require(getgenv().TIESAS.FUNCTIONS)
-	if (module.gameId ~= game.GameId) then
-		table.insert(module, {
-			Type = "Text",
-			Args = {"TIESAS now includes an official <font color='#FFFF00'>Forsaken</font> module!"}
-		})
-		table.insert(module, {
-			Type = "Text",
-			Args = {"<font size='10'>To use, run TIESAS on Forsaken.</font>"}
-		})
-		repeat task.wait() until getgenv().Modules
-		getgenv().Modules[4] = module
-		return
-	end
-	
-	-- Imports
-	local ts = game:GetService("TweenService")
-	
-	local espind = require(script.Parent.ESPIndicator)
-	local espcontainer = espind.new({ArrowEdgePadding = 50, ArrowShowDistanceText = true})
-	
-	-- Toggles
-	module.players = false
-	module.items = false
-	module.generators = false
-	module.priotizingmedkit = false
-	module.infinitestamina = false
-	module.noCooldownSolve = false
-	
-	-- Cooldowns
-	local solveGeneratorCooldown = false
-	
-	-- Connections
-	local conns = {}
-	
-	-- ESP Helpers
-	local function addPlayer(p)
-		espcontainer:Add(p, {AccentColor = Color3.new(0.149, 1, 0), ArrowShow = false, ShowLabel = false, GroupName = "players"})
-	end
-	
-	local function addKiller(k)
-		espcontainer:Add(k, {
-			AccentColor = Color3.new(1, 0, 0),
-			ArrowShow = true,
-			ArrowMinDistance = 999999,
-			ArrowSize = UDim2.new(0, 40, 0, 40),
-			LabelText = "Killer",
-			ShowLabel = true,
-			GroupName = "players"
-		})
-	end
-	
-	local function addItem(i)
-		local cfg = {AccentColor = Color3.new(0.0313725, 0.917647, 1), ArrowShow = false, ShowLabel = false, GroupName = "items"}
-		if module.priotizingmedkit and i.Name == "Medkit" then
-			fu.notification("Medkit spawned!")
-			cfg = {
-				AccentColor = Color3.new(1, 1, 1),
-				ArrowShow = true,
-				ArrowMinDistance = 999999,
-				ArrowSize = UDim2.new(0, 40, 0, 40),
-				LabelText = "Medkit",
-				ShowLabel = true,
-				GroupName = "items"
-			}
-		end
-		espcontainer:Add(i, cfg)
-	end
-	
-	local function addGenerator(g)
-		local progVal = g:FindFirstChild("Progress")
-		local progress = (progVal and progVal.Value) or 0
-	
-		local showLabel = true
-		local showArrow = true
-		local accentColor = Color3.new(0.984, 1, 0)       
-		local labelText = tostring(math.floor(progress)) .. "%"
-	
-		if progress >= 100 then
-			showLabel = false
-			showArrow = false
-			accentColor = Color3.new(0, 0.5, 0)           
-		end
-	
-		espcontainer:Add(g, {
-			AccentColor      = accentColor,
-			ArrowShow        = showArrow,
-			ArrowMinDistance = 999999,
-			ArrowSize        = UDim2.new(0,20,0,20),
-			ShowLabel        = showLabel,
-			LabelText        = labelText,
-			GroupName        = "generators",
-		})
-	
-		if progVal then
-			progVal.Changed:Connect(function(new)
-				espcontainer:Remove(g)
-				addGenerator(g)
-			end)
-		end
-	end
-	
-	local function getClosestGenerator()
-		local char = game.Players.LocalPlayer.Character
-		if not char or not char.PrimaryPart then return nil end
-	
-		local root = char.PrimaryPart
-		local closest, shortestDist = nil, math.huge
-	
-		local map = workspace.Map:FindFirstChild("Ingame"):FindFirstChild("Map")
-		if map then
-			for _, obj in ipairs(map:GetChildren()) do
-				if obj.Name == "Generator" and obj:IsA("Model") and obj.PrimaryPart then
-					local dist = (root.Position - obj.PrimaryPart.Position).Magnitude
-					if dist < shortestDist then
-						closest = obj
-						shortestDist = dist
-					end
-				end
-			end
-		end
-	
-		return closest
-	end
-	
-	local function removeIndicator(obj)
-		espcontainer:Remove(obj)
-	end
-	
-	local function listen(parent, signal, callback)
-		local conn = signal:Connect(callback)
-		table.insert(conns, conn)
-		return conn
-	end
-	
-	local function setupAutoUpdate()
-		local s, k = workspace.Players:FindFirstChild("Survivors"), workspace.Players:FindFirstChild("Killers")
-		if s then
-			listen(s, s.ChildAdded, function(c) 
-				if module.players then addPlayer(c) end 
-			end)
-			listen(s, s.ChildRemoved, function(c) 
-				if module.players then removeIndicator(c) end 
-			end)
-		end
-		if k then
-			listen(k, k.ChildAdded, function(c) 
-				if module.players then addKiller(c) end 
-			end)
-			listen(k, k.ChildRemoved, function(c) 
-				if module.players then removeIndicator(c) end 
-			end)
-		end
-	
-		local ingame = workspace.Map:FindFirstChild("Ingame")
-		if ingame then
-			listen(ingame, ingame.ChildAdded, function(c) 
-				if module.items and c.Name ~= "Map" then addItem(c) end 
-			end)
-			listen(ingame, ingame.ChildRemoved, function(c) 
-				if module.items and c.Name ~= "Map" then removeIndicator(c) end 
-			end)
-			local map = ingame:FindFirstChild("Map")
-			if map then
-				listen(map, map.ChildAdded, function(c) 
-					if module.generators and c.Name == "Generator" then addGenerator(c) end 
-				end)
-				listen(map, map.ChildRemoved, function(c) 
-					if module.generators and c.Name == "Generator" then removeIndicator(c) end 
-				end)
-			end
-		end
-	end
-	
-	function module.clear()
-		for _, c in ipairs(conns) do c:Disconnect() end
-		table.clear(conns)
-		espcontainer:ClearAllGroups()
-	end
-	
-	-- Sprinting Patch
-	task.spawn(function()
-		local sprintingModule = require(game:GetService("ReplicatedStorage").Systems.Character.Game.Sprinting)
-		while task.wait(1) do
-			if module.infinitestamina then
-				sprintingModule.StaminaLossDisabled = true
-			end
-		end
-	end)
-	
-	-- UI Setup
-	table.insert(module, { Type = "Text", Args = {"ESPs"} })
-	
-	table.insert(module, {
-		Type = "ButtonGrid",
-		Toggleable = true,
-		Args = {3, {
-			Players = function(Self)
-				module.players = not module.players
-				if module.players then
-					local survivors = workspace.Players:FindFirstChild("Survivors")
-					if survivors then
-						for _, p in ipairs(survivors:GetChildren()) do
-							addPlayer(p)
-						end
-					end
-					local killers = workspace.Players:FindFirstChild("Killers")
-					if killers then
-						local killer = killers:GetChildren()[1]
-						if killer then addKiller(killer) end
-					end
-					--espcontainer:ToggleGroup("players", true)
-				else
-					espcontainer:RemoveGroup("players")
-				end
-			end,
-			Items = function(Self)
-				module.items = not module.items
-				if module.items then
-					local ingame = workspace.Map:FindFirstChild("Ingame")
-					if ingame then
-						for _, i in ipairs(ingame:GetChildren()) do
-							if i.Name ~= "Map" then addItem(i) end
-						end
-					end
-					--espcontainer:ToggleGroup("items", true)
-				else
-					espcontainer:RemoveGroup("items")
-				end
-			end,
-			Generators = function(Self)
-				module.generators = not module.generators
-				if module.generators then
-					local ingame = workspace.Map:FindFirstChild("Ingame")
-					if ingame then
-						local map = ingame:FindFirstChild("Map")
-						if map then
-							for _, g in ipairs(map:GetChildren()) do
-								if g.Name == "Generator" then addGenerator(g) end
-							end
-						end
-					end
-					--espcontainer:ToggleGroup("generators", true)
-				else
-					espcontainer:RemoveGroup("generators")
-				end
-			end,
-		}}
-	})
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Show medkit in item ESP", function(Self, state)
-			module.priotizingmedkit = state
-			espcontainer:RemoveGroup("items")
-			if module.items then
-				local ingame = workspace.Map:FindFirstChild("Ingame")
-				if ingame then
-					for _, i in ipairs(ingame:GetChildren()) do
-						if i.Name ~= "Map" then addItem(i) end
-					end
-				end
-				--espcontainer:ToggleGroup("items", true)
-			end
-		end}
-	})
-	
-	table.insert(module, { Type = "Text", Args = {"Tools"} })
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Finish generator puzzle", function(Self)
-			if solveGeneratorCooldown then fu.notification("Cooldown for 4 seconds!") return end
-			solveGeneratorCooldown = not module.noCooldownSolve --confusing i know
-			if getClosestGenerator() then
-				getClosestGenerator().Remotes.RE:FireServer()
-			end
-			task.wait(4) solveGeneratorCooldown = false
-		end}
-	})
-	
-	table.insert(module, { Type = "Text", Args = {"You will automatically solve the closest generator."} })
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Bypass puzzle solver cooldown", function(Self, state)
-			module.noCooldownSolve = state
-		end,}
-	})
-	
-	table.insert(module, { Type = "Text", Args = {"If you solve too quickly, you can be <font color='#FF0000'>DETECTED</font> by the game. Use with caution!"} })
-	
-	
-	
-	table.insert(module, { Type = "Text", Args = {""} })
-	
-	
-	
-	table.insert(module, { Type = "Text", Args = {"<font color='#FF0000'>Detectables</font>"} })
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Infinite stamina", function(Self, state)
-			module.infinitestamina = state
-			if not state then
-				local sprintingModule = require(game:GetService("ReplicatedStorage").Systems.Character.Game.Sprinting)
-				sprintingModule.StaminaLossDisabled = false
-			end
-		end}
-	})
-	
-	table.insert(module, {
-		Type = "Input",
-		Args = {"Sprinting speed (Default = 26)", "Set sprint speed", function(Self, text)
-			local sprintingModule = require(game:GetService("ReplicatedStorage").Systems.Character.Game.Sprinting)
-			sprintingModule.SprintSpeed = tonumber(text) or 26
-		end}
-	})
-	
-	table.insert(module, {
-		Type = "Input",
-		Args = {"Stamina gain rate (Default = 20)", "Set stamina gain", function(Self, text)
-			local sprintingModule = require(game:GetService("ReplicatedStorage").Systems.Character.Game.Sprinting)
-			sprintingModule.StaminaGain = tonumber(text) or 20
-		end}
-	})
-	
-	-- Final setup
-	setupAutoUpdate()
-	repeat task.wait() until getgenv().Modules
-	getgenv().Modules[4] = module
 end
 local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
     local script = Instance.new("LocalScript")
@@ -5389,8 +3496,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	module["gameId"] = game.GameId
 	
 	local fu = require(getgenv().TIESAS.FUNCTIONS)
-	local runtimeEnvironment = getgenv()
-	local previousRuntime = runtimeEnvironment.TIESAS_MM2_V5_RUNTIME
+	local previousRuntime = runtimeEnvironment.TIESAS_MM2_V6_RUNTIME
 	if type(previousRuntime) == "table" and type(previousRuntime.stop) == "function" then
 		pcall(previousRuntime.stop)
 	end
@@ -5405,6 +3511,12 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			table.insert(runtime.connections, connection)
 		end
 		return connection
+	end
+	function runtime.release(connection)
+		if not connection then return end
+		pcall(function() connection:Disconnect() end)
+		local index = table.find(runtime.connections, connection)
+		if index then table.remove(runtime.connections, index) end
 	end
 	function runtime.cleanup(callback)
 		if type(callback) == "function" then
@@ -5423,12 +3535,13 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		table.clear(runtime.connections)
 		table.clear(runtime.cleanups)
 	end
-	runtimeEnvironment.TIESAS_MM2_V5_RUNTIME = runtime
+	runtimeEnvironment.TIESAS_MM2_V6_RUNTIME = runtime
+	appRuntime.cleanup(runtime.stop)
 	runtime.track(script.Parent.AncestryChanged:Connect(function(_, parent)
 		if not parent then runtime.stop() end
 	end))
 
-	-- ESP propio de MM2 V5. Sus grupos pertenecen a esta instancia y las flechas
+	-- ESP propio de MM2 V6. Sus grupos pertenecen a esta instancia y las flechas
 	-- se actualizan a 15 Hz, evitando los tweens y limpiezas de cada frame del
 	-- contenedor genérico.
 	local function createMM2ESPContainer()
@@ -5461,10 +3574,43 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			end
 		end
 
+		local function applyIndicatorOptions(indicator, target, options)
+			local color = options.AccentColor or Color3.new(1, 1, 0)
+			indicator.highlight.Adornee = target
+			indicator.highlight.FillColor = color
+			indicator.highlight.OutlineColor = color
+			indicator.highlight.FillTransparency = options.HighlightFillTransparency or 0.68
+			if indicator.arrow then
+				indicator.arrow.ImageColor3 = color
+				indicator.arrow.Size = options.ArrowSize or UDim2.fromOffset(40, 40)
+			end
+			if indicator.label then
+				indicator.label.Adornee = target
+				local text = indicator.label:FindFirstChildOfClass("TextLabel")
+				if text then
+					text.Text = options.LabelText or "Objetivo"
+					text.TextColor3 = color
+				end
+			end
+			indicator.options = options
+		end
+
 		function container:Add(target, options)
 			if not target then return end
 			options = options or {}
-			removeIndicator(target)
+			local existing = container.Indicators[target]
+			if existing
+				and (existing.arrow ~= nil) == (options.ArrowShow == true)
+				and (existing.label ~= nil) == (options.ShowLabel == true) then
+				applyIndicatorOptions(existing, target, options)
+				local groupName = options.GroupName
+				if groupName then
+					container.Groups[groupName] = container.Groups[groupName] or {}
+					container.Groups[groupName][target] = true
+				end
+				return existing
+			end
+			if existing then removeIndicator(target) end
 
 			local color = options.AccentColor or Color3.new(1, 1, 0)
 			local highlight = Instance.new("Highlight")
@@ -5513,15 +3659,32 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				stroke.Parent = text
 			end
 
-			container.Indicators[target] = {
+			local indicator = {
 				highlight = highlight,
 				arrow = arrow,
 				label = label,
 			}
+			container.Indicators[target] = indicator
+			applyIndicatorOptions(indicator, target, options)
 			local groupName = options.GroupName
 			if groupName then
 				container.Groups[groupName] = container.Groups[groupName] or {}
 				container.Groups[groupName][target] = true
+			end
+			return indicator
+		end
+
+		function container:SyncGroup(groupName, desired)
+			local group = container.Groups[groupName] or {}
+			container.Groups[groupName] = group
+			local toRemove = {}
+			for target in pairs(group) do
+				if not desired[target] then table.insert(toRemove, target) end
+			end
+			for _, target in ipairs(toRemove) do removeIndicator(target) end
+			for target, options in pairs(desired) do
+				options.GroupName = groupName
+				container:Add(target, options)
 			end
 		end
 
@@ -5551,10 +3714,13 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		end
 
 		local arrowAccumulator = 0
+		local frameTimeAverage = 1 / 60
 		runtime.track(game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
 			if not runtime.alive then return end
+			frameTimeAverage = frameTimeAverage + (deltaTime - frameTimeAverage) * 0.08
 			arrowAccumulator = arrowAccumulator + deltaTime
-			if arrowAccumulator < 1 / 15 then return end
+			local updateRate = frameTimeAverage > 1 / 38 and 10 or 15
+			if arrowAccumulator < 1 / updateRate then return end
 			arrowAccumulator = 0
 
 			local camera = workspace.CurrentCamera
@@ -5569,7 +3735,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				elseif arrow then
 					local position
 					if target:IsA("Model") then
-						position = target:GetPivot().Position
+						pcall(function() position = target:GetPivot().Position end)
 					elseif target:IsA("BasePart") then
 						position = target.Position
 					end
@@ -5610,17 +3776,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	runtime.cleanup(function() espcontainer:Destroy() end)
 	
 	local playerESP = true
-	local coinAutoCollect = false
-	local autoShooting = false
 	local shootOffset = 2.8
 	local offsetToPingMult = 1
-	
-	local predictionAIEngine = false
-	local predictionOngoing = false
-	
-	local predictionCooldown = false
-	
-	
 	local gunDropESP = true
 
 	local trapDetection = true
@@ -5632,25 +3789,31 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	
 	local autoGetDroppedGun = false
-	local simulateKnifeThrow = false
 	
 	local localplayer = game:GetService("Players").LocalPlayer
 	
 	local playerData = {}
 	
-	local phs = game:GetService("PathfindingService")
-	local ts = game:GetService("TweenService")
 	local rs = game:GetService("RunService")
-	
-	local claimedCoins = {}
+	local cachedMap
+	local cachedMurderer
+	local cachedSheriff
+	local cachedHero
+	local lastRoleResolutionAt = 0
 
-	local function getMap()
+	local function scanForMap()
 		for _, object in ipairs(workspace:GetChildren()) do
 			if object:FindFirstChild("CoinContainer") and object:FindFirstChild("Spawns") then
 				return object
 			end
 		end
 		return nil
+	end
+
+	local function getMap()
+		if cachedMap and cachedMap.Parent then return cachedMap end
+		cachedMap = scanForMap()
+		return cachedMap
 	end
 
 	local function isMapModel(object)
@@ -5668,110 +3831,101 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return getMap() ~= nil
 	end
 
+	local function resolveRoles(force)
+		local now = os.clock()
+		if not force and now - lastRoleResolutionAt < 0.08 then
+			return cachedMurderer, cachedSheriff or cachedHero
+		end
+		lastRoleResolutionAt = now
+
+		local murdererFromTool
+		local sheriffFromTool
+		for _, player in ipairs(game.Players:GetPlayers()) do
+			local backpack = player:FindFirstChildOfClass("Backpack")
+			local character = player.Character
+			if (backpack and backpack:FindFirstChild("Knife"))
+				or (character and character:FindFirstChild("Knife")) then
+				murdererFromTool = player
+			end
+			if (backpack and backpack:FindFirstChild("Gun"))
+				or (character and character:FindFirstChild("Gun")) then
+				sheriffFromTool = player
+			end
+		end
+
+		local murdererFromData
+		local sheriffFromData
+		local heroFromData
+		if type(playerData) == "table" then
+			for playerName, data in pairs(playerData) do
+				if type(data) == "table" then
+					local player = typeof(playerName) == "Instance"
+						and playerName:IsA("Player") and playerName
+						or game.Players:FindFirstChild(tostring(playerName))
+					if data.Role == "Murderer" then murdererFromData = player end
+					if data.Role == "Sheriff" then sheriffFromData = player end
+					if data.Role == "Hero" then heroFromData = player end
+				end
+			end
+		end
+
+		cachedMurderer = murdererFromTool or murdererFromData
+		cachedSheriff = sheriffFromTool or sheriffFromData
+		cachedHero = heroFromData
+		return cachedMurderer, cachedSheriff or cachedHero
+	end
+
 	local function findMurderer()
-	
-	
-		-- Fallback
-		for _, i in ipairs(game.Players:GetPlayers()) do
-			if i.Backpack:FindFirstChild("Knife") then
-				return i
-			end
-		end
-	
-		for _, i in ipairs(game.Players:GetPlayers()) do
-			if not i.Character then continue end
-			if i.Character:FindFirstChild("Knife") then
-				return i
-			end
-		end
-	
-		if playerData then
-			for player, data in playerData do
-				if data.Role == "Murderer" then
-					if game.Players:FindFirstChild(player) then
-						return game.Players:FindFirstChild(player)
-					end
-				end
-			end
-		end
-		return nil
+		resolveRoles(false)
+		return cachedMurderer
 	end
-	
+
 	local function findSheriff()
-	
-	
-		-- Fallback
-		for _, i in ipairs(game.Players:GetPlayers()) do
-			if i.Backpack:FindFirstChild("Gun") then
-				return i
-			end
-		end
-	
-		for _, i in ipairs(game.Players:GetPlayers()) do
-			if not i.Character then continue end
-			if i.Character:FindFirstChild("Gun") then
-				return i
-			end
-		end
-	
-	
-		if playerData then
-			for player, data in playerData do
-				if data.Role == "Sheriff" then
-					if game.Players:FindFirstChild(player) then
-						return game.Players:FindFirstChild(player)
-					end
-				end
-			end
-		end
-		return nil
+		resolveRoles(false)
+		return cachedSheriff or cachedHero
 	end
-	
-	local function findSheriffThatsNotMe()
-	
-	
-		-- Fallback
-		for _, i in ipairs(game.Players:GetPlayers()) do
-			if i == localplayer then continue end
-			if i.Backpack:FindFirstChild("Gun") then
-				return i
-			end
-		end
-	
-		for _, i in ipairs(game.Players:GetPlayers()) do
-			if i == localplayer then continue end
-			if not i.Character then continue end
-			if i.Character:FindFirstChild("Gun") then
-				return i
-			end
-		end
-	
-	
-		if playerData then
-			for player, data in playerData do
-				if data.Role == "Sheriff" then
-					if game.Players:FindFirstChild(player) then
-						if game.Players:FindFirstChild(player) == localplayer then continue end
-						return game.Players:FindFirstChild(player)
-					end
-				end
-			end
-		end
-		return nil
-	end
-	
-	
-	
+
 	local hideMeEsp = false
+	local originalTrapTransparency = setmetatable({}, {__mode = "k"})
+	local function trapOptions()
+		return {
+			AccentColor = Color3.fromRGB(255, 80, 90),
+			ArrowShow = false,
+			ShowLabel = true,
+			LabelText = "Trampa",
+			GroupName = "trap",
+		}
+	end
+	local function revealTrap(object)
+		if object:IsA("BasePart") then
+			if originalTrapTransparency[object] == nil then
+				originalTrapTransparency[object] = object.Transparency
+			end
+			object.Transparency = 0
+		end
+		espcontainer:Add(object, trapOptions())
+	end
+	runtime.cleanup(function()
+		for object, transparency in pairs(originalTrapTransparency) do
+			if object.Parent then object.Transparency = transparency end
+		end
+	end)
+
 	local function reloadESP()
-		espcontainer:RemoveGroup("players")
-		if not playerESP then return end
+		local desired = {}
+		if not playerESP then
+			espcontainer:SyncGroup("players", desired)
+			return
+		end
 
 		local murderer = findMurderer()
 		local sheriff = findSheriff()
 		-- No pintar a todo el lobby de verde. El ESP aparece en cuanto MM2
 		-- entrega al menos uno de los roles, incluso antes de crear el mapa.
-		if not murderer and not sheriff then return end
+		if not murderer and not sheriff then
+			espcontainer:SyncGroup("players", desired)
+			return
+		end
 
 		for _, player in ipairs(game.Players:GetPlayers()) do
 			if player == localplayer and hideMeEsp then continue end
@@ -5780,72 +3934,76 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			if not character or not humanoid or humanoid.Health <= 0 then continue end
 
 			if player == murderer then
-				espcontainer:Add(character, {
+				desired[character] = {
 					AccentColor = Color3.new(1, 0, 0.0156863),
 					ArrowShow = true,
 					ArrowMinDistance = 999999,
 					ArrowSize = UDim2.new(0, 40, 0, 40),
 					LabelText = "Asesino",
 					ShowLabel = true,
-					GroupName = "players"
-				})
+					GroupName = "players",
+				}
 			elseif player == sheriff then
-				espcontainer:Add(character, {
+				desired[character] = {
 					AccentColor = Color3.new(0, 0.6, 1),
 					ArrowShow = false,
 					ShowLabel = false,
-					GroupName = "players"
-				})
+					GroupName = "players",
+				}
 			else
-				espcontainer:Add(character, {
+				desired[character] = {
 					AccentColor = Color3.new(0, 1, 0.0313725),
 					ArrowShow = false,
 					ShowLabel = false,
-					GroupName = "players"
-				})
+					GroupName = "players",
+				}
 			end
 		end
+		espcontainer:SyncGroup("players", desired)
 	end
 
 	local function reloadGunESP()
-		espcontainer:RemoveGroup("gun")
-		if not gunDropESP or not isRoundActive() then return end
-
-		local droppedGun = findDroppedGun()
-		if droppedGun then
-			espcontainer:Add(droppedGun, {
+		local desired = {}
+		if gunDropESP and isRoundActive() then
+			local droppedGun = findDroppedGun()
+			if droppedGun then desired[droppedGun] = {
 				AccentColor = Color3.fromRGB(255, 224, 19),
 				ArrowShow = true,
 				ArrowMinDistance = 999999,
 				ArrowSize = UDim2.new(0, 40, 0, 40),
 				LabelText = "Arma caída",
 				ShowLabel = true,
-				GroupName = "gun"
-			})
+				GroupName = "gun",
+			} end
 		end
+		espcontainer:SyncGroup("gun", desired)
 	end
 
 	local function reloadTrapESP()
-		espcontainer:RemoveGroup("trap")
-		if not trapDetection then return end
-
-		local map = getMap()
-		if not map then return end
-		for _, object in ipairs(map:GetDescendants()) do
-			if object.Name == "Trap"
-				and (object.Parent:IsA("Folder") or object.Parent:IsA("Model")) then
-				if object:IsA("BasePart") then
-					object.Transparency = 0
+		local desired = {}
+		if trapDetection then
+			local map = getMap()
+			if map then
+				for _, object in ipairs(map:GetDescendants()) do
+					local parent = object.Parent
+					if object.Name == "Trap" and parent
+						and (parent:IsA("Folder") or parent:IsA("Model")) then
+						if object:IsA("BasePart") then
+							if originalTrapTransparency[object] == nil then
+								originalTrapTransparency[object] = object.Transparency
+							end
+							object.Transparency = 0
+						end
+						desired[object] = trapOptions()
+					end
 				end
-				espcontainer:Add(object, {
-					AccentColor = Color3.fromRGB(255, 80, 90),
-					ArrowShow = false,
-					ShowLabel = true,
-					LabelText = "Trampa",
-					GroupName = "trap"
-				})
+			end
+		else
+			for object, transparency in pairs(originalTrapTransparency) do
+				if object.Parent then object.Transparency = transparency end
 			end
 		end
+		espcontainer:SyncGroup("trap", desired)
 	end
 
 	local function reloadAllESP()
@@ -5854,6 +4012,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		reloadTrapESP()
 	end
 
+	local hasRoleDataRemote = false
 	-- Los roles se asignan antes de que aparezca el mapa. Se observan por separado
 	-- para mostrar el ESP durante la cuenta atrás, sin esperar a CoinContainer.
 	task.spawn(function()
@@ -5861,7 +4020,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		local observedMurderer
 		local observedSheriff
 		local ignoreRolesUntil = 0
-		while runtime.alive and task.wait(0.25) do
+		while runtime.alive
+			and task.wait(hasRoleDataRemote and 0.75 or 0.25) do
 			local map = getMap()
 			if map ~= observedMap then
 				if observedMap and not map then
@@ -5877,7 +4037,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				end
 			end
 
-			if os.clock() >= ignoreRolesUntil then
+			if not hasRoleDataRemote and os.clock() >= ignoreRolesUntil then
 				local murderer = findMurderer()
 				local sheriff = findSheriff()
 				if playerESP
@@ -5892,95 +4052,41 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	
 	
-	if not game.ReplicatedStorage:WaitForChild("Remotes", 5) then
-		fu.dialog(currentGameName .. " no detectado", "No se han encontrado los datos necesarios de " .. currentGameName .. ".", {"Cerrar"})
-
-		fu.waitfordialog()
-		fu.closedialog()
-		return
-	else
-		runtime.track(game.ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Gameplay"):WaitForChild("PlayerDataChanged", 5).OnClientEvent:Connect(function(data)
+	local function connectRoleDataRemote(playerDataChanged)
+		if hasRoleDataRemote or not playerDataChanged
+			or not playerDataChanged:IsA("RemoteEvent") then
+			return false
+		end
+		hasRoleDataRemote = true
+		runtime.track(playerDataChanged.OnClientEvent:Connect(function(data)
 			playerData = data
+			resolveRoles(true)
 			if playerESP then
 				reloadESP()
 			end
 		end))
+		return true
 	end
-	
-	
-	local onTesting = game.GameId == 119460199
-	
-	--if game.ReplicatedStorage:WaitForChild("UpdatePlayerData", 1) then
-	--	local UpdatePlayerDataEvent = game.ReplicatedStorage:WaitForChild("UpdatePlayerData", 5)
-	--	if UpdatePlayerDataEvent then
-	--		UpdatePlayerDataEvent.OnClientEvent:Connect(function(data)
-	--			playerData = data
-	--		end)
-	--	end
-	--end
-	
-	local Players = game:GetService("Players")
-	local playerToExamineIsSpamJumping = false
-	
-	
-	
-	
-	local function findNearestPlayer()
-		local Players = game:GetService("Players")
-		local localPlayer = Players.LocalPlayer
-	
-		local nearestPlayer = nil
-		local shortestDistance = math.huge
-	
-		for _, player in ipairs(Players:GetPlayers()) do
-			if player ~= localPlayer and player.Character then 
-	
-				local localRootPart = localPlayer.Character:FindFirstChild("HumanoidRootPart")
-				local otherRootPart = player.Character:FindFirstChild("HumanoidRootPart")
-				local otherHumanoid = player.Character:FindFirstChildOfClass("Humanoid")
-	
-				if localRootPart and otherRootPart and otherHumanoid and otherHumanoid.Health > 0 then
-					local distance = (localRootPart.Position - otherRootPart.Position).Magnitude
-	
-					if distance < shortestDistance then
-						shortestDistance = distance
-						nearestPlayer = player
-					end
-				end
-			end
-		end
-	
-		return nearestPlayer
+
+	local remotesFolder = game.ReplicatedStorage:FindFirstChild("Remotes")
+	local gameplayFolder = remotesFolder and remotesFolder:FindFirstChild("Gameplay")
+	local playerDataChanged = gameplayFolder
+		and gameplayFolder:FindFirstChild("PlayerDataChanged")
+	if not connectRoleDataRemote(playerDataChanged) then
+		task.spawn(function()
+			local deadline = os.clock() + 4
+			repeat
+				task.wait(0.2)
+				remotesFolder = game.ReplicatedStorage:FindFirstChild("Remotes")
+				gameplayFolder = remotesFolder
+					and remotesFolder:FindFirstChild("Gameplay")
+				playerDataChanged = gameplayFolder
+					and gameplayFolder:FindFirstChild("PlayerDataChanged")
+			until not runtime.alive
+				or connectRoleDataRemote(playerDataChanged)
+				or os.clock() >= deadline
+		end)
 	end
-	
-	function miniFling(playerToFling)
-		local a=game.Players.LocalPlayer;local b=a:GetMouse()local c={playerToFling}local d=game:GetService("Players")local e=d.LocalPlayer;local f=false;local g=function(h)local i=e.Character;local j=i and i:FindFirstChildOfClass("Humanoid")local k=j and j.RootPart;local l=h.Character;local m;local n;local o;local p;local q;if l:FindFirstChildOfClass("Humanoid")then m=l:FindFirstChildOfClass("Humanoid")end;if m and m.RootPart then n=m.RootPart end;if l:FindFirstChild("Head")then o=l.Head end;if l:FindFirstChildOfClass("Accessory")then p=l:FindFirstChildOfClass("Accessory")end;if p and p:FindFirstChild("Handle")then q=p.Handle end;if i and j and k then if k.Velocity.Magnitude<50 then getgenv().OldPos=k.CFrame end;if m and m.Sit and not f then end;if o then if o.Velocity.Magnitude>500 then fu.dialog("Player flung","Player is already flung. Fling again?",{"Fling again","No"})if fu.waitfordialog()=="No"then return fu.closedialog()end;fu.closedialog()end elseif not o and q then if q.Velocity.Magnitude>500 then fu.dialog("Player flung","Player is already flung. Fling again?",{"Fling again","No"})if fu.waitfordialog()=="No"then return fu.closedialog()end;fu.closedialog()end end;if o then workspace.CurrentCamera.CameraSubject=o elseif not o and q then workspace.CurrentCamera.CameraSubject=q elseif m and n then workspace.CurrentCamera.CameraSubject=m end;if not l:FindFirstChildWhichIsA("BasePart")then return end;local r=function(s,t,u)k.CFrame=CFrame.new(s.Position)*t*u;i:SetPrimaryPartCFrame(CFrame.new(s.Position)*t*u)k.Velocity=Vector3.new(9e7,9e7*10,9e7)k.RotVelocity=Vector3.new(9e8,9e8,9e8)end;local v=function(s)local w=2;local x=tick()local y=0;repeat if k and m then if s.Velocity.Magnitude<50 then y=y+100;r(s,CFrame.new(0,1.5,0)+m.MoveDirection*s.Velocity.Magnitude/1.25,CFrame.Angles(math.rad(y),0,0))task.wait()r(s,CFrame.new(0,-1.5,0)+m.MoveDirection*s.Velocity.Magnitude/1.25,CFrame.Angles(math.rad(y),0,0))task.wait()r(s,CFrame.new(2.25,1.5,-2.25)+m.MoveDirection*s.Velocity.Magnitude/1.25,CFrame.Angles(math.rad(y),0,0))task.wait()r(s,CFrame.new(-2.25,-1.5,2.25)+m.MoveDirection*s.Velocity.Magnitude/1.25,CFrame.Angles(math.rad(y),0,0))task.wait()r(s,CFrame.new(0,1.5,0)+m.MoveDirection,CFrame.Angles(math.rad(y),0,0))task.wait()r(s,CFrame.new(0,-1.5,0)+m.MoveDirection,CFrame.Angles(math.rad(y),0,0))task.wait()else r(s,CFrame.new(0,1.5,m.WalkSpeed),CFrame.Angles(math.rad(90),0,0))task.wait()r(s,CFrame.new(0,-1.5,-m.WalkSpeed),CFrame.Angles(0,0,0))task.wait()r(s,CFrame.new(0,1.5,m.WalkSpeed),CFrame.Angles(math.rad(90),0,0))task.wait()r(s,CFrame.new(0,1.5,n.Velocity.Magnitude/1.25),CFrame.Angles(math.rad(90),0,0))task.wait()r(s,CFrame.new(0,-1.5,-n.Velocity.Magnitude/1.25),CFrame.Angles(0,0,0))task.wait()r(s,CFrame.new(0,1.5,n.Velocity.Magnitude/1.25),CFrame.Angles(math.rad(90),0,0))task.wait()r(s,CFrame.new(0,-1.5,0),CFrame.Angles(math.rad(90),0,0))task.wait()r(s,CFrame.new(0,-1.5,0),CFrame.Angles(0,0,0))task.wait()r(s,CFrame.new(0,-1.5,0),CFrame.Angles(math.rad(-90),0,0))task.wait()r(s,CFrame.new(0,-1.5,0),CFrame.Angles(0,0,0))task.wait()end else break end until s.Velocity.Magnitude>500 or s.Parent~=h.Character or h.Parent~=d or h.Character~=l or m.Sit or j.Health<=0 or tick()>x+w end;workspace.FallenPartsDestroyHeight=0/0;local z=Instance.new("BodyVelocity")z.Name="EpixVel"z.Parent=k;z.Velocity=Vector3.new(9e8,9e8,9e8)z.MaxForce=Vector3.new(1/0,1/0,1/0)j:SetStateEnabled(Enum.HumanoidStateType.Seated,false)if n and o then if(n.CFrame.p-o.CFrame.p).Magnitude>5 then v(o)else v(n)end elseif n and not o then v(n)elseif not n and o then v(o)elseif not n and not o and p and q then v(q)else fu.notification("Can't find a proper part of target player to fling.")end;z:Destroy()j:SetStateEnabled(Enum.HumanoidStateType.Seated,true)workspace.CurrentCamera.CameraSubject=j;repeat k.CFrame=getgenv().OldPos*CFrame.new(0,.5,0)i:SetPrimaryPartCFrame(getgenv().OldPos*CFrame.new(0,.5,0))j:ChangeState("GettingUp")table.foreach(i:GetChildren(),function(A,B)if B:IsA("BasePart")then B.Velocity,B.RotVelocity=Vector3.new(),Vector3.new()end end)task.wait()until(k.Position-getgenv().OldPos.p).Magnitude<25;workspace.FallenPartsDestroyHeight=getgenv().FPDH else fu.notification("No valid character of said target player. May have died.")end end;g(c[1])
-	end
-	
-	--task.spawn(function() 
-	--	if game:GetService("RunService"):IsStudio() then return end -- :)
-	
-	--local OldNameCall = nil
-	
-	--OldNameCall = hookmetamethod(game, "__namecall", function(Self, ...)
-	--	local Args = {...}
-	--	local NamecallMethod = getnamecallmethod()
-	
-	--	if NamecallMethod == "InvokeServer" and Args[1] == 1 and sheriffAimbot then
-	--		if not findMurderer() then
-	--			print("No murderer to be shot!")
-	--		else
-	--			print("Shot - Intercepting shot to murderer")
-	--			Args[2] = findMurderer().Character:FindFirstChild("HumanoidRootPart").Position
-	--		end
-	--	end
-	
-	--	return OldNameCall(Self, unpack(Args))
-	--end)
-	
-	--end)
-	
-	-- I honestly don't know what went wrong so if any of you experts know why this stuff aint working make a pull request :praying_hands_emoji:
 	
 	
 	module["Name"] = currentGameName
@@ -5989,6 +4095,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	-- los tres grupos, aunque el script se haya ejecutado desde el lobby.
 	runtime.track(workspace.ChildAdded:Connect(function(ch)
 		if isMapModel(ch) then
+			cachedMap = ch
 			task.spawn(function()
 				task.wait(0.25)
 				if not runtime.alive or not ch.Parent then return end
@@ -6012,15 +4119,21 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 	runtime.track(workspace.ChildRemoved:Connect(function(ch)
 		if isMapModel(ch) then
+			if cachedMap == ch then cachedMap = nil end
 			playerData = {}
+			cachedMurderer = nil
+			cachedSheriff = nil
+			cachedHero = nil
 			espcontainer:ClearAllGroups()
 		end
 	end))
 
 	-- Dropped Gun ESP
 	runtime.track(workspace.DescendantAdded:Connect(function(ch)
-		if trapDetection and ch.Name == "Trap" and (ch.Parent:IsA("Folder") or ch.Parent:IsA("Model")) then
-			reloadTrapESP()
+		local parent = ch.Parent
+		if trapDetection and ch.Name == "Trap" and parent
+			and (parent:IsA("Folder") or parent:IsA("Model")) then
+			revealTrap(ch)
 			fu.notification("El asesino ha colocado una trampa.")
 		end
 
@@ -6048,19 +4161,34 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				task.wait(1)
 				local droppedGun = findDroppedGun()
 				if not droppedGun then fu.notification("No hay ningún arma caída.") return end
-				local previousPosition = localplayer.Character:GetPivot()
-				localplayer.Character:MoveTo(droppedGun.Position)
-				localplayer.Backpack.ChildAdded:Wait()
-				localplayer.Character:PivotTo(previousPosition)
+				local character = localplayer.Character
+				local backpack = localplayer:FindFirstChildOfClass("Backpack")
+				if not character or not backpack then return end
+				local previousPosition = character:GetPivot()
+				character:MoveTo(droppedGun.Position)
+				local deadline = os.clock() + 2.5
+				repeat
+					task.wait(0.05)
+				until not runtime.alive
+					or not character.Parent
+					or backpack:FindFirstChild("Gun")
+					or character:FindFirstChild("Gun")
+					or os.clock() >= deadline
+				if character.Parent then character:PivotTo(previousPosition) end
 			end
 		end
 		end))
 		
 		runtime.track(workspace.DescendantRemoving:Connect(function(ch)
+		if ch.Name == "Trap" then
+			espcontainer:Remove(ch)
+			originalTrapTransparency[ch] = nil
+		end
 		if gunDropESP and ch.Name == "GunDrop" then
 			espcontainer:RemoveGroup("gun")
 			fu.notification("Alguien ha recogido el arma.")
 			task.delay(0.5, function()
+				if not runtime.alive then return end
 				reloadGunESP()
 				reloadESP()
 			end)
@@ -6125,66 +4253,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	end
 		runtime.track(game.Players.PlayerAdded:Connect(watchPlayerForESP))
 	
-	function getClosestModelToPlayer(player, models)
-		local closestModel = nil
-		local closestDistance = math.huge 
-	
-		local playerPosition = player.Character.HumanoidRootPart.Position
-	
-		for _, model in ipairs(models) do
-			local modelPosition = model:GetPivot().Position
-			local distance = (modelPosition - playerPosition).Magnitude
-			if distance < closestDistance then
-				closestDistance = distance
-				closestModel = model
-			end
-		end
-	
-		local returningResult = {closestModel, closestDistance}
-		setmetatable(returningResult, {
-			__tostring = function(t)
-				return closestModel
-			end,
-		})
-	
-		return returningResult
-	end
-	
-	-- Coin autocollect
-	task.spawn(
-		function()
-				while runtime.alive and task.wait(0.1) do
-				if not coinAutoCollect then continue end
-	
-				if getMap() then
-					if getMap():FindFirstChild("CoinContainer") and #getMap():FindFirstChild("CoinContainer"):GetChildren() > 1 then
-						local closestCoin = getClosestModelToPlayer(localplayer, getMap():FindFirstChild("CoinContainer"):GetChildren())
-						if closestCoin then
-							if not localplayer.Character:FindFirstChild("HumanoidRootPart") then continue end
-							local distance = (localplayer.Character:FindFirstChild("HumanoidRootPart").Position - closestCoin:GetPivot().Position).Magnitude
-							local toclosestcoin = ts:Create(localplayer.Character:FindFirstChild("HumanoidRootPart"), TweenInfo.new(distance*0.05, Enum.EasingStyle.Linear), {
-								CFrame = closestCoin:GetPivot()
-							})
-							toclosestcoin:Play()
-							toclosestcoin.Completed:Wait()
-							task.wait(0.1)
-							closestCoin:Destroy() -- so we wont try to get it anymore
-							--localplayer.Character:MoveTo(Vector3.new(closestCoin:GetPivot().X, closestCoin:GetPivot().Y, closestCoin:GetPivot().Z))
-							claimedCoins[closestCoin] = true
-						end
-					end
-				end
-			end
-		end
-	)
-	
-	
-	
-	-- Aim V5 móvil. No captura InputBegan, TouchTap ni __namecall: únicamente
-	-- calcula un destino cuando SHOOT (o una automatización ya activada) dispara.
-	-- Separa retraso de envío, edad de replicación y viaje del proyectil. Para
-	-- jugadores remotos usa historial de posiciones, porque MoveDirection y
-	-- AssemblyLinearVelocity no son señales autoritativas en este cliente.
+	-- Aim V6 móvil. No captura InputBegan, TouchTap ni __namecall: únicamente
+	-- calcula un destino al pulsar SHOOT. Separa la pistola instantánea del
+	-- cuchillo físico y fecha cada muestra con la edad real de replicación.
 	local predictionTracks = setmetatable({}, {__mode = "k"})
 	local smoothedNetworkPing = 0
 	local smoothedDataPing = 0
@@ -6192,12 +4263,16 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local httpService = game:GetService("HttpService")
 	local statsService = game:GetService("Stats")
 	local aimDataFolder = "TiesasScripts"
-	local aimDataPath = aimDataFolder .. "/mm2_aim_v5.json"
-	local legacyAimDataPath = aimDataFolder .. "/mm2_aim_v4.json"
+	local aimDataPath = aimDataFolder .. "/mm2_aim_v6_"
+		.. tostring(game.GameId) .. ".json"
+	local aimDataBackupPath = aimDataPath .. ".backup"
+	local legacyV5AimDataPath = aimDataFolder .. "/mm2_aim_v5.json"
+	local legacyV4AimDataPath = aimDataFolder .. "/mm2_aim_v4.json"
 	local aimData = {
-		version = 5,
+		version = 6,
+		gameId = game.GameId,
 		knifePhysics = {
-			speed = tonumber(getgenv().TIESAS_MEASURED_KNIFE_SPEED) or 200,
+			speed = 200,
 			gravity = 0,
 			measurements = 0,
 			gravityMeasurements = 0,
@@ -6207,6 +4282,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			linearVotes = 0,
 			recentSpeeds = {},
 			recentGravities = {},
+			recentModels = {},
 		},
 		routeStats = {},
 		recentShots = {},
@@ -6234,23 +4310,6 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return copy[middle + 1]
 	end
 
-	local function medianVector(vectors)
-		if #vectors == 0 then return Vector3.new(0, 0, 0) end
-		local xValues = {}
-		local yValues = {}
-		local zValues = {}
-		for _, vector in ipairs(vectors) do
-			table.insert(xValues, vector.X)
-			table.insert(yValues, vector.Y)
-			table.insert(zValues, vector.Z)
-		end
-		return Vector3.new(
-			medianNumber(xValues) or 0,
-			medianNumber(yValues) or 0,
-			medianNumber(zValues) or 0
-		)
-	end
-
 	local function readLocalJson(path)
 		if type(isfile) ~= "function" or type(readfile) ~= "function" then return nil end
 		local ok, decoded = pcall(function()
@@ -6262,7 +4321,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 	local function loadLocalAimData()
 		local decoded = readLocalJson(aimDataPath)
-		if decoded and decoded.version == 5 then
+			or readLocalJson(aimDataBackupPath)
+		if decoded and decoded.version == 6 then
 			if type(decoded.knifePhysics) == "table" then
 				aimData.knifePhysics = decoded.knifePhysics
 			end
@@ -6275,10 +4335,11 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			return
 		end
 
-		-- Solo se migran mediciones físicas del cuchillo. Las correcciones
-		-- geométricas V4 no se importan porque mezclaban tiempos de ida y vuelta.
-		local legacy = readLocalJson(legacyAimDataPath)
-		if legacy and legacy.version == 4 and type(legacy.knifePhysics) == "table" then
+		-- Entre juegos solo se migran las mediciones físicas robustas. Las rutas,
+		-- resultados y modelos se vuelven a aprender para no mezclar MM2 y MMV.
+		local legacy = readLocalJson(legacyV5AimDataPath)
+			or readLocalJson(legacyV4AimDataPath)
+		if legacy and type(legacy.knifePhysics) == "table" then
 			local physics = legacy.knifePhysics
 			aimData.knifePhysics.speed = math.clamp(
 				tonumber(physics.speed) or 200,
@@ -6301,19 +4362,28 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		end
 	end
 
+	local function writeAimDataNow()
+		if type(writefile) ~= "function" then return end
+		pcall(function()
+			if type(isfolder) == "function" and type(makefolder) == "function"
+				and not isfolder(aimDataFolder) then
+				makefolder(aimDataFolder)
+			end
+			if type(isfile) == "function" and type(readfile) == "function"
+				and isfile(aimDataPath) then
+				writefile(aimDataBackupPath, readfile(aimDataPath))
+			end
+			writefile(aimDataPath, httpService:JSONEncode(aimData))
+		end)
+	end
+
 	local function scheduleAimDataSave()
 		if type(writefile) ~= "function" then return end
 		saveAimGeneration = saveAimGeneration + 1
 		local generation = saveAimGeneration
-		task.delay(0.4, function()
+		task.delay(1.5, function()
 			if not runtime.alive or generation ~= saveAimGeneration then return end
-			pcall(function()
-				if type(isfolder) == "function" and type(makefolder) == "function"
-					and not isfolder(aimDataFolder) then
-					makefolder(aimDataFolder)
-				end
-				writefile(aimDataPath, httpService:JSONEncode(aimData))
-			end)
+			writeAimDataNow()
 		end)
 	end
 
@@ -6324,6 +4394,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		and aimData.knifePhysics.recentSpeeds or {}
 	aimData.knifePhysics.recentGravities = type(aimData.knifePhysics.recentGravities) == "table"
 		and aimData.knifePhysics.recentGravities or {}
+	aimData.knifePhysics.recentModels = type(aimData.knifePhysics.recentModels) == "table"
+		and aimData.knifePhysics.recentModels or {}
 	aimData.routeStats = type(aimData.routeStats) == "table"
 		and aimData.routeStats or {}
 	aimData.recentShots = type(aimData.recentShots) == "table"
@@ -6334,7 +4406,10 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	while #aimData.knifePhysics.recentGravities > 8 do
 		table.remove(aimData.knifePhysics.recentGravities, 1)
 	end
-	while #aimData.recentShots > 60 do table.remove(aimData.recentShots, 1) end
+	while #aimData.knifePhysics.recentModels > 12 do
+		table.remove(aimData.knifePhysics.recentModels, 1)
+	end
+	while #aimData.recentShots > 40 do table.remove(aimData.recentShots, 1) end
 	local measuredKnifeSpeed = math.clamp(
 		tonumber(aimData.knifePhysics.speed) or 200,
 		70,
@@ -6346,6 +4421,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		240
 	)
 	getgenv().TIESAS_MEASURED_KNIFE_SPEED = measuredKnifeSpeed
+	runtime.cleanup(writeAimDataNow)
 
 	local function readReceiveAge(root)
 		local ok, value = pcall(function() return root.ReceiveAge end)
@@ -6376,32 +4452,55 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			predictionTracks[player] = track
 		end
 
+		local position = root.Position
+		local receiveAge = readReceiveAge(root)
+		local measurementTime = now - (receiveAge or 0)
+		local airborne = false
+		pcall(function()
+			airborne = humanoid.FloorMaterial == Enum.Material.Air
+		end)
 		local samples = track.samples
 		local lastSample = samples[#samples]
 		if lastSample then
-			local elapsed = now - lastSample.time
-			if elapsed < (forceSample and 0.01 or 0.032) then
+			local arrivalElapsed = now - (lastSample.arrivalTime or lastSample.time)
+			local movement = (position - lastSample.position).Magnitude
+			if arrivalElapsed < (forceSample and 0.01 or 0.032) then
 				track.lastSeenAt = now
 				return track
 			end
-			if (root.Position - lastSample.position).Magnitude
-				> math.max(15, elapsed * 78) then
+			-- Roblox puede entregar varias frames con la misma posición remota.
+			-- No se introducen duplicados que aparenten una frenada inexistente.
+			if movement < 0.015 and arrivalElapsed < 0.16 then
+				track.lastSeenAt = now
+				track.receiveAge = receiveAge
+				return track
+			end
+			local measurementElapsed = math.max(
+				measurementTime - lastSample.time,
+				0.004
+			)
+			if movement > math.max(15, measurementElapsed * 78) then
 				table.clear(samples)
 				track.teleportedAt = now
+			elseif measurementTime <= lastSample.time then
+				measurementTime = lastSample.time + 0.004
 			end
 		end
 
 		table.insert(samples, {
-			position = root.Position,
-			time = now,
-			receiveAge = readReceiveAge(root),
+			position = position,
+			time = measurementTime,
+			arrivalTime = now,
+			receiveAge = receiveAge,
+			airborne = airborne,
 		})
 		while #samples > 12
-			or (#samples > 3 and now - samples[1].time > 0.68) do
+			or (#samples > 3 and measurementTime - samples[1].time > 0.72) do
 			table.remove(samples, 1)
 		end
 		track.lastSeenAt = now
-		track.position = root.Position
+		track.position = position
+		track.receiveAge = receiveAge
 		return track
 	end
 
@@ -6478,6 +4577,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		local samples = track.samples
 		local count = #samples
 		if count < 2 then
+			local onlySample = samples[count]
 			return {
 				velocity = Vector3.zero,
 				acceleration = Vector3.zero,
@@ -6485,12 +4585,15 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				behavior = "warming",
 				turnScore = 0,
 				brakeScore = 0,
-				airborne = false,
-				observationAge = samples[count] and samples[count].receiveAge,
+				airborne = onlySample and onlySample.airborne or false,
+				observationAge = onlySample
+					and math.max(0, now - onlySample.time) or nil,
+				estimatedRootPosition = onlySample
+					and onlySample.position or root.Position,
 			}
 		end
 
-		local fullVelocity, _, residual, span = weightedLinearFit(
+		local fullVelocity, positionNow, residual, span = weightedLinearFit(
 			samples,
 			1,
 			count,
@@ -6576,6 +4679,48 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			floorIsAir = humanoid.FloorMaterial == Enum.Material.Air
 		end)
 		local airborne = floorIsAir or math.abs(velocity.Y) > 2.4
+		if airborne then
+			local firstAirborne = count
+			while firstAirborne > 1
+				and samples[firstAirborne - 1].airborne do
+				firstAirborne = firstAirborne - 1
+			end
+			firstAirborne = math.max(firstAirborne, count - 5)
+			if count - firstAirborne >= 2 then
+				local ballisticSamples = {}
+				for index = firstAirborne, count do
+					local sample = samples[index]
+					local age = sample.time - now
+					table.insert(ballisticSamples, {
+						position = sample.position
+							+ Vector3.new(
+								0,
+								0.5 * workspace.Gravity * age * age,
+								0
+							),
+						time = sample.time,
+					})
+				end
+				local ballisticVelocity, ballisticPosition = weightedLinearFit(
+					ballisticSamples,
+					1,
+					#ballisticSamples,
+					now
+				)
+				if ballisticVelocity and ballisticPosition then
+					velocity = Vector3.new(
+						velocity.X,
+						math.clamp(ballisticVelocity.Y, -62, 62),
+						velocity.Z
+					)
+					positionNow = Vector3.new(
+						positionNow.X,
+						ballisticPosition.Y,
+						positionNow.Z
+					)
+				end
+			end
+		end
 		local confidence = math.clamp((count - 1) / 7, 0.2, 1)
 			* math.clamp(span / 0.28, 0.3, 1)
 			* (1 - math.clamp(
@@ -6613,20 +4758,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			if receiveAge then table.insert(receiveAges, receiveAge) end
 		end
 
-		local groundClearance
-		if airborne then
-			local params = RaycastParams.new()
-			params.FilterType = Enum.RaycastFilterType.Exclude
-			params.FilterDescendantsInstances = {track.character}
-			local hit = workspace:Raycast(
-				root.Position,
-				Vector3.new(0, -14, 0),
-				params
-			)
-			if hit then
-				groundClearance = math.max(0, root.Position.Y - hit.Position.Y - 2.65)
-			end
-		end
+		local observationAge = math.max(0, now - samples[count].time)
+		confidence = confidence
+			* (1 - math.clamp((observationAge - 0.035) / 0.24, 0, 0.52))
 
 		return {
 			velocity = velocity,
@@ -6636,26 +4770,24 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			turnScore = turnScore,
 			brakeScore = brakeScore,
 			airborne = airborne,
-			groundClearance = groundClearance,
-			observationAge = medianNumber(receiveAges),
+			observationAge = math.max(
+				observationAge,
+				medianNumber(receiveAges) or 0
+			),
+			estimatedRootPosition = positionNow,
 			residual = residual,
 		}
 	end
 
 	local lastPingSampleAt = 0
 	local motionAccumulator = 0
+	local motionFrameAverage = 1 / 60
 	runtime.track(rs.PostSimulation:Connect(function(deltaTime)
 		if not runtime.alive then return end
-		motionAccumulator = motionAccumulator + deltaTime
-		if motionAccumulator < 0.05 then return end
-		motionAccumulator = motionAccumulator - 0.05
 		local now = os.clock()
-
-		for _, player in ipairs(game.Players:GetPlayers()) do
-			if player ~= localplayer then
-				samplePlayerMotion(player, false, now)
-			end
-		end
+		motionFrameAverage = motionFrameAverage
+			+ (deltaTime - motionFrameAverage) * 0.06
+		motionAccumulator = motionAccumulator + deltaTime
 
 		if now - lastPingSampleAt >= 0.25 then
 			lastPingSampleAt = now
@@ -6680,7 +4812,23 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 						* (difference > 0.08 and 0.35 or 0.16)
 				smoothedDataPing = smoothedDataPing
 					+ (dataPing - smoothedDataPing)
-						* (math.abs(dataPing - smoothedDataPing) > 0.1 and 0.3 or 0.12)
+					* (math.abs(dataPing - smoothedDataPing) > 0.1 and 0.3 or 0.12)
+			end
+		end
+
+		local rolesAssigned = cachedMurderer ~= nil
+			or cachedSheriff ~= nil or cachedHero ~= nil
+		local sampleInterval = not rolesAssigned and 0.15
+			or motionFrameAverage > 1 / 38 and 0.075
+			or 0.05
+		if motionAccumulator < sampleInterval then return end
+		motionAccumulator = math.min(
+			motionAccumulator - sampleInterval,
+			sampleInterval
+		)
+		for _, player in ipairs(game.Players:GetPlayers()) do
+			if player ~= localplayer then
+				samplePlayerMotion(player, false, now)
 			end
 		end
 	end))
@@ -6704,6 +4852,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		estimate.character = character
 		estimate.root = root
 		estimate.rootPosition = root.Position
+		estimate.estimatedRootPosition = estimate.estimatedRootPosition
+			or root.Position
 		estimate.sampleTime = now
 		estimate.track = track
 		return estimate
@@ -6747,19 +4897,22 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		end
 
 		local receiveAge = state and state.observationAge
-		local observationDelay = reliableQueue * 0.2
+		-- La regresión ya extrapola la muestra replicada hasta "ahora". Aquí solo
+		-- queda un margen pequeño por cola/jitter, no la edad completa otra vez.
+		local observationDelay = reliableQueue * 0.08
 		if receiveAge then
 			observationDelay = observationDelay
-				+ math.clamp(receiveAge, 0, 0.16) * 0.58
+				+ math.clamp(receiveAge, 0, 0.12)
+					* (1 - (state.confidence or 0)) * 0.12
 		else
-			observationDelay = observationDelay + dataRtt * 0.08
+			observationDelay = observationDelay + dataRtt * 0.035
 		end
 
 		return {
 			networkRtt = networkRtt,
 			dataRtt = dataRtt,
 			commandDelay = math.clamp(commandDelay, 0.012, 0.22),
-			observationDelay = math.clamp(observationDelay, 0, 0.095),
+			observationDelay = math.clamp(observationDelay, 0, 0.045),
 			jitterBuffer = math.min(networkPingJitter, 0.055) * 0.14,
 		}
 	end
@@ -6783,9 +4936,37 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			local verticalConfidence = 0.52 + state.confidence * 0.48
 			verticalDisplacement = state.velocity.Y * horizon * verticalConfidence
 				- 0.5 * workspace.Gravity * horizon * horizon
-			if state.groundClearance
-				and verticalDisplacement < -state.groundClearance then
-				verticalDisplacement = -state.groundClearance
+			local futureVerticalVelocity = state.velocity.Y
+				- workspace.Gravity * horizon
+			if futureVerticalVelocity < 0 then
+				local estimatedRoot = state.estimatedRootPosition
+					or state.rootPosition
+				local futureHorizontal = estimatedRoot + horizontalDisplacement
+				local rayOrigin = Vector3.new(
+					futureHorizontal.X,
+					estimatedRoot.Y + math.max(verticalDisplacement, 0) + 2,
+					futureHorizontal.Z
+				)
+				local params = RaycastParams.new()
+				params.FilterType = Enum.RaycastFilterType.Exclude
+				params.FilterDescendantsInstances = {state.character}
+				local ground = workspace:Raycast(
+					rayOrigin,
+					Vector3.new(
+						0,
+						-(18 + math.abs(verticalDisplacement)),
+						0
+					),
+					params
+				)
+				if ground then
+					local minimumDisplacement = ground.Position.Y + 2.65
+						- estimatedRoot.Y
+					verticalDisplacement = math.max(
+						verticalDisplacement,
+						minimumDisplacement
+					)
+				end
 			end
 		elseif math.abs(state.velocity.Y) > 1.4 then
 			verticalDisplacement = state.velocity.Y
@@ -6852,6 +5033,26 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	}
 
 	local function chooseVisibleBodyPoint(character, origin, displacement)
+		for _, name in ipairs({"UpperTorso", "Torso"}) do
+			local part = character:FindFirstChild(name)
+			if part and part:IsA("BasePart") and part.CanQuery then
+				local predicted = part.Position + displacement
+				if isTrajectoryClear(character, origin, predicted)
+					and isTrajectoryClear(character, origin, predicted, 0.16) then
+					return {
+						position = predicted,
+						currentPosition = part.Position,
+						partName = name,
+						radius = math.min(
+							0.78,
+							math.min(part.Size.X, part.Size.Y) * 0.45
+						),
+						leadFraction = 1,
+					}
+				end
+			end
+		end
+
 		local best
 		local bestScore = -math.huge
 		for _, definition in ipairs(bodyPointDefinitions) do
@@ -7013,12 +5214,14 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			route,
 			latency.commandDelay * pingScale
 		)
-		local relative = state.rootPosition - aimOrigin
-		if relative.Magnitude < 0.01 then return state.rootPosition end
+		local estimatedRoot = state.estimatedRootPosition
+			or state.rootPosition
+		local relative = estimatedRoot - aimOrigin
+		if relative.Magnitude < 0.01 then return estimatedRoot end
 
 		local context, radialSpeed = classifyRadialMotion(
 			aimOrigin,
-			state.rootPosition,
+			estimatedRoot,
 			state.velocity
 		)
 		local radialDirection = relative.Unit
@@ -7040,6 +5243,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		)
 		local displacement = fullDisplacement
 			- radialDirection * fullDisplacement:Dot(radialDirection)
+		displacement = displacement
+			+ (estimatedRoot - state.rootPosition)
 		local bodyPoint = chooseVisibleBodyPoint(
 			state.character,
 			aimOrigin,
@@ -7131,6 +5336,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		if not state then return nil end
 		local bodyPoint = getKnifeBasePoint(state.character, origin)
 		if not bodyPoint then return nil end
+		local estimatedRoot = state.estimatedRootPosition
+			or state.rootPosition
+		local replicatedCorrection = estimatedRoot - state.rootPosition
 
 		local projectileSpeed = math.clamp(measuredKnifeSpeed, 70, 280)
 		local pingScale = math.clamp(tonumber(offsetToPingMult) or 1, 0, 3)
@@ -7149,7 +5357,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		)
 		local motionFactor = getMotionFactor(state)
 		local reliableVelocity = state.velocity * motionFactor
-		local initialRelative = bodyPoint.currentPosition
+		local initialRelative = bodyPoint.currentPosition + replicatedCorrection
 			+ reliableVelocity * networkLead - origin
 		local travelTime = math.clamp(
 			solveInterceptTime(initialRelative, reliableVelocity, projectileSpeed),
@@ -7161,7 +5369,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 		for _ = 1, 5 do
 			local targetDisplacement = predictTargetDisplacement(state, totalTime)
-			predictedPosition = bodyPoint.currentPosition + targetDisplacement
+			predictedPosition = bodyPoint.currentPosition
+				+ replicatedCorrection + targetDisplacement
 			local physicsModel = aimData.knifePhysics.model
 			local modelConfidence = tonumber(
 				aimData.knifePhysics.modelConfidence
@@ -7185,7 +5394,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 		local context, radialSpeed = classifyRadialMotion(
 			origin,
-			bodyPoint.currentPosition,
+			bodyPoint.currentPosition + replicatedCorrection,
 			state.velocity
 		)
 		return predictedPosition, {
@@ -7214,10 +5423,23 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		}
 	end
 
+	local knifeProjectileSeenAt = setmetatable({}, {__mode = "k"})
+	for _, object in ipairs(workspace:GetDescendants()) do
+		if object.Name == "ThrowingKnife" then
+			knifeProjectileSeenAt[object] = 0
+		end
+	end
+	runtime.track(workspace.DescendantAdded:Connect(function(object)
+		if object.Name == "ThrowingKnife" then
+			knifeProjectileSeenAt[object] = os.clock()
+		end
+	end))
+
 	local function observeNextKnifePhysics(origin, predictedPosition)
 		local connection
 		local finished = false
 		local testing = setmetatable({}, {__mode = "k"})
+		local observerStartedAt = os.clock()
 		local expectedDirection = predictedPosition - origin
 		expectedDirection = expectedDirection.Magnitude > 0.01
 			and expectedDirection.Unit or nil
@@ -7230,6 +5452,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				projectile = projectile.Parent
 			end
 			if not projectile or projectile == workspace or testing[projectile] then return end
+			local seenAt = knifeProjectileSeenAt[projectile]
+			if not seenAt or seenAt < observerStartedAt - 0.03 then return end
 			testing[projectile] = true
 
 			task.spawn(function()
@@ -7254,7 +5478,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				end
 
 				local previousPosition = getPosition()
-				if (previousPosition - origin).Magnitude > 30 then return end
+				if (previousPosition - origin).Magnitude > 18 then return end
 				local previousTime = os.clock()
 				local speeds = {}
 				local directions = {}
@@ -7269,6 +5493,17 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 					if elapsed > 0.004 and elapsed < 0.12 then
 						local delta = position - previousPosition
 						local velocity = delta / elapsed
+						local assemblyVelocity
+						pcall(function()
+							assemblyVelocity = part.AssemblyLinearVelocity
+						end)
+						if typeof(assemblyVelocity) == "Vector3"
+							and assemblyVelocity.Magnitude >= 45
+							and assemblyVelocity.Magnitude <= 320
+							and velocity.Magnitude > 0.01
+							and velocity.Unit:Dot(assemblyVelocity.Unit) > 0.5 then
+							velocity = velocity:Lerp(assemblyVelocity, 0.35)
+						end
 						local speed = velocity.Magnitude
 						if speed >= 45 and speed <= 320 then
 							table.insert(speeds, speed)
@@ -7285,7 +5520,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				if finished or #speeds < 4 or #directions < 3 then return end
 
 				local initialDirection = directions[1]
-				if expectedDirection and initialDirection:Dot(expectedDirection) < 0.5 then
+				if expectedDirection and initialDirection:Dot(expectedDirection) < 0.72 then
 					return
 				end
 				local directionAgreement = 0
@@ -7297,8 +5532,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				if directionAgreement < 0.76 then return end
 
 				finished = true
-				if connection then connection:Disconnect() end
-				local medianSpeed = medianNumber(speeds)
+				runtime.release(connection)
+				local medianSpeed = tonumber(medianNumber(speeds))
 				if not medianSpeed then return end
 				local recentSpeeds = aimData.knifePhysics.recentSpeeds
 				table.insert(recentSpeeds, math.clamp(medianSpeed, 70, 280))
@@ -7345,11 +5580,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 						and gravity <= 240
 						and negativeCount / #verticalAccelerations >= 0.7
 						and dispersion <= math.max(28, gravity * 0.45)
+					local recentModels = aimData.knifePhysics.recentModels
 					if ballisticEvidence then
-						aimData.knifePhysics.ballisticVotes = math.min(
-							20,
-							(tonumber(aimData.knifePhysics.ballisticVotes) or 0) + 1
-						)
+						table.insert(recentModels, "ballistic")
 						local recentGravities = aimData.knifePhysics.recentGravities
 						table.insert(recentGravities, gravity)
 						while #recentGravities > 8 do
@@ -7370,24 +5603,28 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 						aimData.knifePhysics.gravityMeasurements = gravityMeasurements + 1
 					elseif math.abs(medianAcceleration or 0) <= 32
 						or dispersion > 65 then
-						aimData.knifePhysics.linearVotes = math.min(
-							20,
-							(tonumber(aimData.knifePhysics.linearVotes) or 0) + 1
-						)
+						table.insert(recentModels, "linear")
 					end
-					local ballisticVotes = tonumber(
-						aimData.knifePhysics.ballisticVotes
-					) or 0
-					local linearVotes = tonumber(
-						aimData.knifePhysics.linearVotes
-					) or 0
+					while #recentModels > 12 do table.remove(recentModels, 1) end
+					local ballisticVotes = 0
+					local linearVotes = 0
+					for _, model in ipairs(recentModels) do
+						if model == "ballistic" then
+							ballisticVotes = ballisticVotes + 1
+						elseif model == "linear" then
+							linearVotes = linearVotes + 1
+						end
+					end
+					aimData.knifePhysics.ballisticVotes = ballisticVotes
+					aimData.knifePhysics.linearVotes = linearVotes
 					local totalVotes = ballisticVotes + linearVotes
 					if totalVotes >= 3 then
 						aimData.knifePhysics.model = ballisticVotes > linearVotes
 							and "ballistic" or "linear"
 						aimData.knifePhysics.modelConfidence = math.clamp(
 							math.abs(ballisticVotes - linearVotes)
-								/ math.max(totalVotes, 1) + totalVotes * 0.055,
+								/ math.max(totalVotes, 1)
+								* math.clamp(totalVotes / 6, 0.5, 1),
 							0,
 							1
 						)
@@ -7398,9 +5635,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		end))
 
 		task.delay(1, function()
-			if not runtime.alive then return end
 			finished = true
-			if connection then connection:Disconnect() end
+			runtime.release(connection)
 		end)
 	end
 
@@ -7502,8 +5738,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 					<= (metadata.targetRadius or 0.7) + 0.18
 				traceResult.miss = missDistance
 				traceResult.geometricHit = geometricHit
-				-- V5 no modifica su adelanto usando esta geometría local: no es
-				-- una confirmación del servidor y hacerlo en V4 podía sobreajustar.
+				-- V6 guarda esta geometría solo para diagnóstico: no es una
+				-- confirmación del servidor y no debe autoajustar el adelanto.
 			end)
 		end
 
@@ -7538,7 +5774,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				initialHealth = math.floor(initialHealth + 0.5),
 				time = os.time(),
 			})
-			while #aimData.recentShots > 60 do
+			while #aimData.recentShots > 40 do
 				table.remove(aimData.recentShots, 1)
 			end
 			scheduleAimDataSave()
@@ -7616,74 +5852,6 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local lastKnifeShotAt = 0
 	local gunShotInFlight = false
 
-	task.spawn(function()
-		while runtime.alive and task.wait(1) do
-			if findSheriff() == localplayer and autoShooting then
-				fu.notification("Disparo automático iniciado.")
-				repeat
-					task.wait(0.1)
-					if not runtime.alive then break end
-					local murderer = findMurderer()
-					if not murderer then fu.notification("No se ha encontrado al asesino.") continue end
-					local murdererCharacter = murderer.Character
-					local murdererRoot = murdererCharacter and murdererCharacter:FindFirstChild("HumanoidRootPart")
-					local localCharacter = localplayer.Character
-					local characterRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
-					if not murdererRoot or not characterRootPart then continue end
-
-					if not localCharacter:FindFirstChild("Gun") then
-						local hum = localCharacter:FindFirstChildOfClass("Humanoid")
-						local backpackGun = localplayer.Backpack:FindFirstChild("Gun")
-						if hum and backpackGun then
-							hum:EquipTool(backpackGun)
-						else
-							fu.notification("No tienes el arma.")
-							return
-						end
-					end
-
-					if gunShotInFlight
-						or os.clock() - lastGunShotAt < 1.05 then continue end
-					local equippedGun = localCharacter:FindFirstChild("Gun")
-						or localCharacter:WaitForChild("Gun", 0.5)
-					local originPart = localCharacter:FindFirstChild("RightHand")
-						or localCharacter:FindFirstChild("Right Arm")
-						or equippedGun and equippedGun:FindFirstChild("Handle")
-						or characterRootPart
-					if equippedGun and originPart then
-						local predictedPosition, metadata = getGunPredictedPosition(
-							murderer,
-							originPart.Position,
-							shootOffset,
-							equippedGun
-						)
-						if predictedPosition and metadata then
-							metadata.origin = originPart.Position
-							gunShotInFlight = true
-							local fired, route, receipt = fireGunAtPosition(
-								equippedGun,
-								originPart.Position,
-								predictedPosition
-							)
-							gunShotInFlight = false
-							if fired then
-								lastGunShotAt = receipt and receipt.sentAt or os.clock()
-								registerShotOutcome(
-									murderer,
-									metadata,
-									route,
-									receipt
-								)
-							end
-						end
-					end
-				until not runtime.alive
-					or findSheriff() ~= localplayer
-					or not autoShooting
-			end
-		end
-	end)
-	
 	table.insert(module, {
 		Type = "Text",
 		Args = {"VISIÓN DE PARTIDA"}
@@ -7973,6 +6141,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	end)
 	local shootButtonItem = {
 		Type = "Button",
+		FloatingDefault = true,
 		Args = {"SHOOT", function()
 			if not isRoundActive() then
 				fu.notification("Necesitas estar en una partida activa para atacar.")
@@ -8044,7 +6213,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	table.insert(module, {
 		Type = "Text",
-		Args = {"Aim V5 adaptativo. Base automática: 2.8."}
+		Args = {"Aim V6 adaptativo. Base automática: 2.8."}
 	})
 
 	table.insert(module, {
@@ -8054,7 +6223,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 	table.insert(module, {
 		Type = "Text",
-		Args = {"V5 mide el cuchillo y guarda sus datos localmente en Delta."}
+		Args = {"V6 mide el cuchillo y guarda datos separados para cada juego."}
 	})
 
 	if true then
@@ -8101,966 +6270,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 		repeat task.wait() until getgenv().Modules
 		getgenv().Modules[1] = module
-		fu.refreshlist()
-		-- La columna de módulos está oculta en iPhone: seleccionar MM2 de forma
-		-- explícita evita que el área central se quede vacía por una carrera.
-		fu.refresharea(module)
-
-		-- En móvil el menú debe quedar accesible desde el primer momento. Al
-		-- minimizarlo, el control TS integrado permite volver a abrirlo.
-		local gui = getgenv().TIESAS
-		gui.Menu.Visible = true
-		gui.Open.Visible = false
-		gui.Dropdown.Visible = false
-		gui.Dialog.Visible = false
-
-		for _, child in ipairs(gui.FloatingButtons:GetChildren()) do
-			if child:IsA("TextButton") and child.Name ~= "SHOOT" then
-				child:Destroy()
-			end
-		end
-		fu.createFloatingButton(shootButtonItem, Instance.new("TextButton"), "SHOOT")
-		fu.notification("Menú y SHOOT listos. Minimiza el menú para dejar visible el botón TS.")
+		getgenv().TIESAS_MODULES_READY = true
 		return
 	end
-	
-	
-	
-	--table.insert(module, {
-	--	Type = "ButtonGrid",
-	--	Toggleable = true,
-	--	Args = {1, {
-	--		--Coins_Magnet = function()
-	--		--	coinAutoCollect = not coinAutoCollect
-	--		--	if coinAutoCollect then
-	--		--		fu.notification("Coins magnet is currently buggy right now. Use at your own risk.")
-	--		--	end
-	--		--end,
-	--		Auto_Shoot_murderer = function()
-	--			autoShooting = not autoShooting
-	--			if findSheriff() == localplayer and autoShooting then
-	--				fu.notification("Auto-shooting started.")
-	--				repeat
-	--					task.wait(0.1)
-	--					local murderer = findMurderer() or findSheriffThatsNotMe()
-	--					if not murderer then warn("[TIESAS] > MM2 Autoshoot - No murderer.") continue end
-	--					local murdererPosition = murderer.Character.HumanoidRootPart.Position
-	--					local characterRootPart = localplayer.Character.HumanoidRootPart
-	--					local rayDirection = (murdererPosition - characterRootPart.Position).Unit * 50
-	
-	--					local raycastParams = RaycastParams.new()
-	--					raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-	--					raycastParams.FilterDescendantsInstances = {localplayer.Character}
-	
-	--					local hit = workspace:Raycast(characterRootPart.Position, rayDirection, raycastParams)
-	--					if not hit or hit.Instance.Parent == murderer.Character then -- Check if nothing collides or if it collides with the murderer
-	--						fu.notification("Auto-shooting!")
-	--						if not localplayer.Character:FindFirstChild("Gun") then
-	--							local hum = localplayer.Character:FindFirstChild("Humanoid")
-	--							if localplayer.Backpack:FindFirstChild("Gun") then
-	--								localplayer.Character:FindFirstChild("Humanoid"):EquipTool(localplayer.Backpack:FindFirstChild("Gun"))
-	--							else
-	--								fu.notification("You don't have the gun..?")
-	--								return
-	--							end
-	--						end
-	--						local murdererHRP = murderer.Character:FindFirstChild("HumanoidRootPart")
-	--						if not murdererHRP then
-	--							fu.notification("Could not find the murderer's HumanoidRootPart.")
-	--							return
-	--						end
-	--						local murdererVelocity = murdererHRP.AssemblyLinearVelocity
-	--						local predictedPosition = murdererHRP.Position + (murdererVelocity * Vector3.new(1, 0.5, 1)) * (shootOffset / 15)
-	
-	--						local args = {
-	--							[1] = 1,
-	--							[2] = predictedPosition,
-	--							[3] = "AH2"
-	--						}
-	
-	
-	--						localplayer.Character.Gun.KnifeLocal.CreateBeam.RemoteFunction:InvokeServer(unpack(args))
-	--					end
-	--				until not autoShooting
-	--			end
-	--		end,
-	--	}}
-	--})
-	
-	local function secondsToMinutes(seconds)
-		if seconds == -1 then return "" end
-		local minutes = math.floor(seconds / 60)
-		local remainingSeconds = seconds % 60
-		return string.format("%dm %ds", minutes, remainingSeconds)
-	end
-	local timertask = nil
-	local timertext = nil
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Round timer", function(Self, state)
-			if state then
-				timertext = Instance.new("TextLabel")
-				timertext.Parent = script.Parent
-				timertext.BackgroundTransparency = 1
-				timertext.TextColor3 = Color3.fromRGB(255, 255, 255)
-				timertext.TextScaled = true
-				timertext.AnchorPoint = Vector2.new(0.5, 0.5)
-	
-				timertext.Position = UDim2.fromScale(0.5, 0.15)
-				timertext.Size = UDim2.fromOffset(200, 35)
-	
-				timertext.Font = Enum.Font.Montserrat
-	
-				timertask = task.spawn(function()
-					while task.wait(0.5) do
-						local timeLeft = game.Workspace:FindFirstChild("RoundTimerPart"):GetAttribute("Time")
-						timertext.Text = secondsToMinutes(timeLeft)
-					end
-				end)
-			else
-				if timertext then
-					timertext:Destroy()
-				end
-				task.cancel(timertask)
-			end
-		end,}
-	})
-	
-	table.insert(module, {Type="Text", Args={""}})
-	
-	table.insert(module, {
-		Type = "Text",
-		Args = {"<font color='#FF0000'>Detectables</font>"}
-	})
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Instakill murderer as sheriff", function(Self, tog)
-			instakillshoot = tog
-		end}
-	})
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Spawn knife throw near player", function(Self, tog)
-			spawnAtPlayer = tog
-		end}
-	})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Send Sheriff and Murderer names into chat", function(Self)
-			local textchannels = game:GetService("TextChatService"):WaitForChild("TextChannels"):GetChildren()
-			for _, textchannel in ipairs(textchannels) do
-				if textchannel.Name == "RBXSystem" then continue end
-				local murd = findMurderer()
-				local sher = findSheriff()
-	
-				local murdName = "-"
-				local sherName = "-"
-				if murd then murdName = murd.Name end
-				if sher then sherName = sher.Name end
-				local message = string.format([[Murderer: %s |
-		Sheriff: %s |
-		<<TIESAS>>]], murdName, sherName)
-				textchannel:SendAsync(message)
-			end
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "ButtonGrid",
-		Args = {2, {
-			Teleport_to_lobby = function(Self)
-				local lobby = workspace:FindFirstChild("Lobby") 
-				if lobby then
-					localplayer.Character:MoveTo(lobby.Spawns:FindFirstChildWhichIsA("SpawnLocation").Position)
-				end
-				--localplayer.Character:MoveTo(Vector3.new(-350, 522, -4))
-			end,
-	
-			Teleport_to_map = function(Self)
-				local map = getMap()
-				local spawnsFolder = map and map:FindFirstChild("Spawns")
-				if spawnsFolder then
-					local spawns = spawnsFolder:GetChildren()
-					if #spawns == 0 then
-						fu.notification("No map spawn is available.")
-						return
-					end
-					local randomSpawn = spawns[math.random(1, #spawns)]
-					localplayer.Character:MoveTo(randomSpawn.Position)
-				else
-					fu.notification("No map to teleport to.")
-				end
-			end,
-		}}
-	}) 
-	
-	table.insert(module, {
-		Type = "ButtonGrid",
-		Args = {2, {
-			Fling_Sheriff = function()
-				if not findSheriff() then
-					fu.notification("No sheriff/hero to fling.")
-					return
-				end
-				miniFling(findSheriff())
-			end,
-	
-			Fling_Murderer = function()
-				if not findMurderer() then
-					fu.notification("No murderer to fling.")
-					return
-				end
-				miniFling(findMurderer())
-			end,
-		}}
-	})
-	
-	table.insert(module, {
-		Type = "ButtonGrid",
-		Args = {2, {
-			Copy_murderer_username = function()
-				if not findMurderer() then
-					fu.notification("No murderer to copy.")
-					return
-				end
-				if setclipboard then setclipboard(findMurderer().Name) end
-				fu.notification("Copied to clipboard.")
-			end,
-	
-			Copy_sheriff_username = function()
-				if not findSheriff() then
-					fu.notification("No sheriff/hero to copy.")
-					return
-				end
-				if setclipboard then setclipboard(findSheriff().Name) end
-				fu.notification("Copied to clipboard.")
-			end,
-		}}
-	})
-	
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Teleport to dropped gun", function(Self)
-			local droppedGun = findDroppedGun()
-			if not droppedGun then fu.notification("No dropped gun to be teleported to.") return end
-			local previousPosition = localplayer.Character:GetPivot()
-			localplayer.Character:PivotTo(droppedGun:GetPivot())
-			localplayer.Backpack.ChildAdded:Wait()
-			localplayer.Character:PivotTo(previousPosition)
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Automatically get gun on drop", function(Self, state)
-			autoGetDroppedGun = state
-		end,}
-	})
-	
-	local ignoreknifethrow = false
-	runtime.track(game.Workspace.ChildAdded:Connect(function(chi)
-		if chi.Name == "ThrowingKnife" and ignoreknifethrow then
-			chi:Destroy()
-		end
-	end))
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Ignore knife throws (doesn't work)", function(Self, state)
-			ignoreknifethrow = state
-		end,}
-	})
-	
-	
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"God mode (Very, VERY UNSTABLE)", function(Self) -- Credits to EdgeIY, Infinite Yield
-			local Cam = workspace.CurrentCamera
-			local Pos, Char = Cam.CFrame, localplayer.Character
-			local Human = Char and Char.FindFirstChildWhichIsA(Char, "Humanoid")
-			local nHuman = Human.Clone(Human)
-			nHuman.Parent, localplayer.Character = Char, nil
-			nHuman.SetStateEnabled(nHuman, 15, false)
-			nHuman.SetStateEnabled(nHuman, 1, false)
-			nHuman.SetStateEnabled(nHuman, 0, false)
-			nHuman.BreakJointsOnDeath, Human = true, Human.Destroy(Human)
-			localplayer.Character, Cam.CameraSubject, Cam.CFrame = Char, nHuman, wait() and Pos
-			nHuman.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-			local Script = Char.FindFirstChild(Char, "Animate")
-			if Script then
-				Script.Disabled = true
-				wait()
-				Script.Disabled = false
-			end
-			nHuman.Health = nHuman.MaxHealth
-		end,}
-	})
-	
-	
-	
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Kill closest player as murderer", function()
-			if findMurderer() ~= localplayer then fu.notification("You're not murderer.") return end
-	
-			if not localplayer.Character:FindFirstChild("Knife") then
-				local hum = localplayer.Character:FindFirstChild("Humanoid")
-				if localplayer.Backpack:FindFirstChild("Knife") then
-					localplayer.Character:FindFirstChild("Humanoid"):EquipTool(localplayer.Backpack:FindFirstChild("Knife"))
-				else
-					fu.notification("You don't have the knife..?")
-					return
-				end
-			end
-	
-			local NearestPlayer = findNearestPlayer()
-	
-			if not NearestPlayer or not NearestPlayer.Character then
-				fu.notification("Can't find a player!?")
-				return
-			end
-			local nearestHRP = NearestPlayer.Character:FindFirstChild("HumanoidRootPart")
-			if not nearestHRP then
-				fu.notification("Can't find the player's pivot.")
-			end
-	
-			if not localplayer.Character:FindFirstChild("HumanoidRootPart") then fu.notification("You're not a valid character.") return end
-			if not simulateKnifeThrow then
-				nearestHRP.Anchored = true
-				nearestHRP.CFrame = localplayer.Character:FindFirstChild("HumanoidRootPart").CFrame + localplayer.Character:FindFirstChild("HumanoidRootPart").CFrame.LookVector * 2
-				task.wait(0.1)
-				local args = {
-					[1] = "Slash"
-				}
-	
-				localplayer.Character.Knife.Stab:FireServer(unpack(args))
-				return
-			else
-				local lpknife = localplayer.Character:FindFirstChild("Knife")
-				if not lpknife then return end
-	
-				local raycastParams = RaycastParams.new()
-				raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-				raycastParams.FilterDescendantsInstances = {localplayer.Character}
-				local rayResult = workspace:Raycast(lpknife:GetPivot().Position, (nearestHRP.Position - localplayer.Character:FindFirstChild("HumanoidRootPart").Position).Unit * 350, raycastParams)
-				local toThrow = nearestHRP.Position
-				--if rayResult then
-				--	toThrow = rayResult.Position
-				--end
-				--if math.random(0, 10) == 5 then -- idk what the fuk im doing
-				--	toThrow = nearestHRP.Position
-				--end
-				local args = {
-					[1] = lpknife:GetPivot(), 
-					[2] = toThrow
-				}
-	
-				localplayer.Character.Knife.Throw:FireServer(unpack(args))
-				return
-			end
-	
-	
-		end,}
-	})
-	
-	-- table.insert(module, {
-	-- 	Type = "Toggle",
-	-- 	Args = {"Simulate knife throw for killing nearest", function(Self, state)
-	-- 		simulateKnifeThrow = state
-	-- 		if state then
-	-- 			fu.notification("Simulating a knife throw can make you look legitimate. However, note that it's less reliable and may miss the target.")
-	-- 		end
-	-- 	end,}
-	-- })
-	
-	local killAuraCon = nil
-	
-	table.insert(module, {
-		Type = "Toggle",
-		Args = {"Murderer kill aura", function(Self, state)
-			if state then
-				if killAuraCon then killAuraCon:Disconnect() end
-			else
-				killAuraCon = game:GetService("RunService").Heartbeat:Connect(function()
-					for _, player in ipairs(game.Players:GetPlayers()) do
-						if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player ~= localplayer then
-							local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-							if (hrp.Position - localplayer.Character:FindFirstChild("HumanoidRootPart").Position).Magnitude < 7 then
-								hrp.Anchored = true
-								hrp.CFrame = localplayer.Character:FindFirstChild("HumanoidRootPart").CFrame + localplayer.Character:FindFirstChild("HumanoidRootPart").CFrame.LookVector * 2
-	
-								task.wait(0.1)
-								local args = {
-									[1] = "Slash"
-								}
-	
-								localplayer.Character.Knife.Stab:FireServer(unpack(args))
-								return	
-							end
-						end
-					end
-				end)
-			end
-		end,}
-	})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Kill EVERYONE as murderer", function()
-			if findMurderer() ~= localplayer then fu.notification("You're not murderer.") return end
-	
-			if not localplayer.Character:FindFirstChild("Knife") then
-				local hum = localplayer.Character:FindFirstChild("Humanoid")
-				if localplayer.Backpack:FindFirstChild("Knife") then
-					localplayer.Character:FindFirstChild("Humanoid"):EquipTool(localplayer.Backpack:FindFirstChild("Knife"))
-				else
-					fu.notification("You don't have the knife..?")
-					return
-				end
-			end
-	
-			for _, player in ipairs(game.Players:GetPlayers()) do
-				if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player ~= localplayer then
-					player.Character:FindFirstChild("HumanoidRootPart").Anchored = true
-					player.Character:FindFirstChild("HumanoidRootPart").CFrame = localplayer.Character:FindFirstChild("HumanoidRootPart").CFrame + localplayer.Character:FindFirstChild("HumanoidRootPart").CFrame.LookVector * 1 
-	
-				end	
-			end
-	
-			local args = {
-				[1] = "Slash"
-			}
-			localplayer.Character.Knife.Stab:FireServer(unpack(args))
-		end,}
-	})
-	
-	--table.insert(module, {
-	--	Type = "Text",
-	--	Args = {"Coin farming"}
-	--})
-	
-	
-	--local Players = game:GetService("Players")
-	--local RunService = game:GetService("RunService")
-	
-	--local coinFarming = false
-	--local coinFarmConnection = nil
-	--local coinCollected = 0
-	--local coinBag = 0
-	--local coinLimit = 50
-	--local coinBlacklists = {}
-	
-	--game.ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Gameplay"):WaitForChild("CoinCollected").OnClientEvent:Connect(function(arg1, arg2, arg3)
-	--	local amount = tonumber(arg1) or tonumber(arg2)
-	--	local limit = tonumber(arg2) or tonumber(arg3)
-	--	if amount then coinBag = amount end
-	--	if limit then coinLimit = limit end
-	--end)
-	
-	--local FARM_SPEED = 30
-	
-	--local function isPlayerInLobby()
-	--	local coinFolder = workspace:FindFirstChild("CoinContainer", true) or workspace:FindFirstChild("CoinVisuals", true) or workspace:FindFirstChild("Coins", true)
-	--	if not coinFolder then return true end
-	
-	--	local lobby = workspace:FindFirstChild("Lobby")
-	--	if lobby and game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-	--		local dist = (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - lobby:GetPivot().Position).Magnitude
-	--		if dist < 200 then return true end
-	--	end
-	--	return false
-	--end
-	
-	--local function getNearestCoin(hrp)
-	--	local container = workspace:FindFirstChild("CoinContainer", true) or workspace:FindFirstChild("CoinVisuals", true) or workspace:FindFirstChild("Coins", true)
-	--	if not container then return nil end
-	
-	--	local nearest, minDist = nil, math.huge
-	--	for _, coin in ipairs(container:GetChildren()) do
-	--		if coin:IsA("BasePart") and not coinBlacklists[coin] and (coin.Name == "Coin_Server" or coin:FindFirstChildWhichIsA("TouchTransmitter")) then
-	--			local visual = coin:FindFirstChild("CoinVisual")
-	--			if not visual or visual.Transparency == 0 then
-	--				local dist = (hrp.Position - coin.Position).Magnitude
-	--				if dist < minDist then
-	--					minDist = dist
-	--					nearest = coin
-	--				end
-	--			end
-	--		end
-	--	end
-	--	return nearest
-	--end
-	
-	--local function startCoinFarm()
-	--	if coinFarming then fu.notification("Already coin farming.") return end
-	
-	--	coinFarming = true
-	
-	--	coinFarmConnection = RunService.Heartbeat:Connect(function()
-	--		local char = Players.LocalPlayer.Character
-	--		local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	--		local hum = char and char:FindFirstChild("Humanoid")
-	
-	--		if not hrp or not hum or hum.Health <= 0 then return end 
-	
-	--		if isPlayerInLobby() then 
-	--			coinBag = 0
-	--			coinBlacklists = {}
-	--			hrp.Velocity = Vector3.zero
-	--			fu.dialog("Coin farming | IN LOBBY", `{coinCollected} coins collected.`, {})
-	--			return 
-	--		end
-	
-	--		if coinBag >= coinLimit then
-	--			hrp.Velocity = Vector3.zero
-	--			fu.dialog("Coin farming | COIN MAX", `{coinCollected} coins collected.`, {})
-	--			return
-	--		end
-	
-	--		local target = getNearestCoin(hrp)
-	
-	--		if target then
-	--			for _, part in ipairs(char:GetDescendants()) do
-	--				if part:IsA("BasePart") then part.CanCollide = false end
-	--			end
-	
-	--			local direction = (target.Position - hrp.Position).Unit
-	--			hrp.Velocity = direction * FARM_SPEED
-	--			hrp.CFrame = CFrame.new(hrp.Position, target.Position)
-	
-	--			local distance = (target.Position - hrp.Position).Magnitude
-	--			if distance < 3 then
-	--				local touch = target:FindFirstChildWhichIsA("TouchTransmitter", true) or target
-	--				if firetouchinterest then
-	--					firetouchinterest(hrp, touch.Parent or touch, 0)
-	
-	--					task.spawn(function()
-	--						task.wait()
-	--						firetouchinterest(hrp, touch.Parent or touch, 1)
-	--					end)
-	--				end
-	
-	--				coinCollected += 1
-	--				coinBlacklists[target] = true
-	--			end
-	--		else
-	--			hrp.Velocity = Vector3.zero
-	--		end
-	
-	--		fu.dialog("Coin farming", `{coinBag} / {coinLimit} in bag. Total: {coinCollected}`, {})
-	--	end)
-	--end
-	
-	--table.insert(module, {
-	--	Type = "Button",
-	--	Args = {"Start coin farming", function()
-	--		startCoinFarm()
-	--	end,}
-	--})
-	
-	--table.insert(module, {
-	--	Type = "Button",
-	--	Args = {"Stop coin farming", function()
-	--		if not coinFarming then fu.notification("You're not coin farming.") return end
-	--		fu.notification("Stopped coin farming. Collected " .. coinCollected .. " coins.")
-	
-	--		coinFarming = false
-	--		if coinFarmConnection then 
-	--			coinFarmConnection:Disconnect() 
-	--			coinFarmConnection = nil 
-	--		end
-	
-	--		coinCollected = 0
-	--		coinBlacklists = {}
-	--		coinBag = 0
-	--		fu.closedialog()
-	
-	--		local char = game.Players.LocalPlayer.Character
-	--		if char then
-	--			for _, part in ipairs(char:GetDescendants()) do
-	--				if part:IsA("BasePart") then part.CanCollide = true end
-	--			end
-	--			local hrp = char:FindFirstChild("HumanoidRootPart")
-	--			if hrp then hrp.Velocity = Vector3.zero end
-	--		end
-	--	end,}
-	--})
-	
-	-- no i give up im srry this ass
-	
-	-- any smarties wanna fixthis ass code please do
-	
-	
-	table.insert(module, {
-		Type = "Text",
-		Args = {"Fun"}
-	})
-	
-	table.insert(module, {
-		Type = "Button",
-		Args = {"Hold everyone hostage", function()
-			if findMurderer() ~= localplayer then fu.notification("You're not murderer. This'll only be useful if you're the murderer.") return end
-	
-			for _, player in ipairs(game.Players:GetPlayers()) do
-				if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player ~= localplayer then
-					player.Character:FindFirstChild("HumanoidRootPart").Anchored = true
-					player.Character:FindFirstChild("HumanoidRootPart").CFrame = localplayer.Character:FindFirstChild("HumanoidRootPart").CFrame + localplayer.Character:FindFirstChild("HumanoidRootPart").CFrame.LookVector * 5
-				end	
-			end
-	
-			fu.notification("Placed every single player in a single point. Kill everyone at once once you decide to.")
-		end,}
-	})
-	
-	repeat task.wait() until getgenv().Modules
-	getgenv().Modules[3] = module
-	fu.refreshlist()
-end
-local function ONOAH_routine() -- Routine: StarterGui.TIESAS.Open.InitOpen
-    local script = Instance.new("LocalScript")
-    script.Name = "InitOpen"
-    script.Parent = Converted["_Open"]
-    local req = require
-    local require = function(obj)
-        local routine = routine_module_scripts[obj]
-        if routine then
-            return routine()
-        end
-        return req(obj)
-    end
-
-
-	local ts = game:GetService("TweenService")
-	
-	
-	local stroke = Instance.new("UIStroke")
-	stroke.Parent = script.Parent
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Color = Color3.fromRGB(255,255,255)
-	
-	
-	script.Parent.Position = UDim2.fromScale(0.5, -1)
-	ts:Create(script.Parent, TweenInfo.new(1.5, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {
-		Position = UDim2.fromScale(0.5, 0.063)
-	}):Play()
-	
-	
-	task.wait(5)
-	ts:Create(script.Parent, TweenInfo.new(5), {
-		TextTransparency = 1
-	}):Play()
-	--ts:Create(stroke, TweenInfo.new(5), {
-	--	Transparency = 1
-	--}):Play()
-end
-local function JFQXCG_routine() -- Routine: StarterGui.TIESAS.Open.OnClick
-    local script = Instance.new("LocalScript")
-    script.Name = "OnClick"
-    script.Parent = Converted["_Open"]
-    local req = require
-    local require = function(obj)
-        local routine = routine_module_scripts[obj]
-        if routine then
-            return routine()
-        end
-        return req(obj)
-    end
-
-
-	local ts = game:GetService("TweenService")
-	
-	local clickCount = 0
-	local lastClickTime = tick()
-	script.Parent.MouseButton1Click:Connect(function()
-		local currentTime = tick()
-		
-		script.Parent.TextTransparency = 1
-		ts:Create(script.Parent, TweenInfo.new(1),
-			{TextTransparency = 1}
-		):Play()
-		
-		-- Check if the time since the last click is within a certain threshold
-		if currentTime - lastClickTime < 0.5 then
-			clickCount = clickCount + 1
-		else
-			
-			clickCount = 1
-		end
-	
-		lastClickTime = currentTime
-	
-		if clickCount == 3 then
-			-- Triple-click detected
-	
-			ts:Create(getgenv().TIESAS.Menu, TweenInfo.new(0.7, Enum.EasingStyle.Back, Enum.EasingDirection.Out), 
-				{Position = UDim2.fromScale(0.499, 0.041), Size = UDim2.fromOffset(441, 268)}
-			):Play()
-		end
-	end)
-	
-end
-local function EJGX_routine() -- Routine: StarterGui.TIESAS.Open.Resizer
-    local script = Instance.new("LocalScript")
-    script.Name = "Resizer"
-    script.Parent = Converted["_Open"]
-    local req = require
-    local require = function(obj)
-        local routine = routine_module_scripts[obj]
-        if routine then
-            return routine()
-        end
-        return req(obj)
-    end
-
-
-
-	local guiObject = script.Parent
-	local userInputService = game:GetService("UserInputService")
-	local ts = game:GetService("TweenService")
-	
-	local resizing = false
-	local initialMousePosition = nil
-	local initialSize = nil
-	local touchCount = 0
-	
-	-- Define the minimum width (50 pixels) and maximum width (initial width)
-	local MIN_WIDTH = 100
-	local MAX_WIDTH = guiObject.Size.X.Offset
-	
-	local function onInputBegan(input, gameProcessed)
-		if input.UserInputType == Enum.UserInputType.Touch then
-			touchCount = touchCount + 1
-		end
-	
-		if touchCount == 2 then
-			resizing = false
-			return
-		end
-	
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			resizing = true
-			initialMousePosition = input.Position
-			initialSize = guiObject.Size
-		end
-	end
-	
-	local function onInputEnded(input, gameProcessed)
-		if input.UserInputType == Enum.UserInputType.Touch then
-			touchCount = touchCount - 1
-		end
-	
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then		
-			resizing = false
-			initialMousePosition = nil
-			initialSize = nil
-			--ts:Create(guiObject.UIStroke, TweenInfo.new(1.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
-			--	Transparency = 1
-			--}):Play()
-		end
-	end
-	
-	local function onInputChanged(input, gameProcessed)
-		if touchCount == 2 then
-			return
-		end
-	
-		if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			local delta = input.Position - initialMousePosition
-			if math.abs(delta.X) > 50 then
-				local newWidth = math.clamp(initialSize.X.Offset + delta.X, MIN_WIDTH, MAX_WIDTH)
-				local newSize = UDim2.new(
-					initialSize.X.Scale,
-					newWidth,
-					initialSize.Y.Scale,
-					initialSize.Y.Offset
-				)
-				ts:Create(guiObject, TweenInfo.new(0.8, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
-					Size = newSize
-				}):Play()
-				--guiObject.UIStroke.Transparency = 0
-			end
-		end
-	end
-	
-	guiObject.InputBegan:Connect(onInputBegan)
-	guiObject.InputEnded:Connect(onInputEnded)
-	userInputService.InputChanged:Connect(onInputChanged)
-	
-end
-local function FRPPL_routine() -- Routine: StarterGui.TIESAS.FloatingButton.Keybinding
-    local script = Instance.new("LocalScript")
-    script.Name = "Keybinding"
-    script.Parent = Converted["_FloatingButton"]
-    local req = require
-    local require = function(obj)
-        local routine = routine_module_scripts[obj]
-        if routine then
-            return routine()
-        end
-        return req(obj)
-    end
-
-
-	
-end
-local function VOBA_routine() -- Routine: StarterGui.TIESAS.FloatingButton.Invisible
-    local script = Instance.new("LocalScript")
-    script.Name = "Invisible"
-    script.Parent = Converted["_FloatingButton"]
-    local req = require
-    local require = function(obj)
-        local routine = routine_module_scripts[obj]
-        if routine then
-            return routine()
-        end
-        return req(obj)
-    end
-
-
-	--local ts = game:GetService("TweenService")
-	
-	--local holding = false
-	--local invisible = false
-	
-	
-	
-	--script.Parent.MouseButton1Down:Connect(function()
-	--	holding = true
-	--	task.wait(0.5)
-	--	if holding then
-	--		if not invisible then 
-	--			invisible = true
-	--			ts:Create(script.Parent, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.InOut), {
-	--				BackgroundTransparency = 1,
-	--				TextTransparency = 1
-	--			}):Play()
-	--			ts:Create(script.Parent.UIStroke, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.InOut), {
-	--				Transparency = 0.7
-	--			}):Play()
-	--		else
-	--			invisible = false
-	--			ts:Create(script.Parent, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.InOut), {
-	--				BackgroundTransparency = 0,
-	--				TextTransparency = 0
-	--			}):Play()
-	--			ts:Create(script.Parent.UIStroke, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.InOut), {
-	--				Transparency = 0
-	--			}):Play()
-	--		end
-	--	end
-	--end)
-	
-	--script.Parent.MouseButton1Up:Connect(function()
-	--	holding = false
-	--end)
-end
-local function SZSARYI_routine() -- Routine: StarterGui.TIESAS.AddCustomModule.Add.LocalScript
-    local script = Instance.new("LocalScript")
-    script.Name = "LocalScript"
-    script.Parent = Converted["_Add"]
-    local req = require
-    local require = function(obj)
-        local routine = routine_module_scripts[obj]
-        if routine then
-            return routine()
-        end
-        return req(obj)
-    end
-
-
-	local ts = game:GetService("TweenService")
-	
-	local function loadModule(modulelink)
-		if script.Parent.Parent.TextBox.Text == "" and not modulelink then return end
-		ts:Create(script.Parent.Parent.Parent.Menu.UIScale, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Scale = 1
-		}):Play()
-		ts:Create(script.Parent.Parent, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Position = UDim2.fromScale(0.5, -0.5)
-		}):Play()
-	
-	
-		local lastmodule = getgenv().Modules[#getgenv().Modules]
-		require(script.Parent.Parent.Parent.FUNCTIONS).notification("Module is loading...")
-	
-		local moduleload = modulelink
-		if script.Parent.Parent.TextBox.Text ~= "" then
-			moduleload = script.Parent.Parent.TextBox.Text
-		end
-	
-		local moduleEx = loadstring(game:HttpGet(moduleload))
-		--setfenv(moduleEx, {FUNCTIONS = require(script.Parent.Parent.Parent.FUNCTIONS)})
-	
-		local newmodule = moduleEx()
-		if newmodule["BG_TASK"] then
-			coroutine.wrap(newmodule["BG_TASK"])()
-		end
-		if getgenv().Modules[#getgenv().Modules] ~= lastmodule then
-			local newmodule = getgenv().Modules[#getgenv().Modules]
-			require(script.Parent.Parent.Parent.FUNCTIONS).notification("New module added: " .. newmodule["Name"])
-			require(script.Parent.Parent.Parent.FUNCTIONS).refreshlist()
-		else
-			require(script.Parent.Parent.Parent.FUNCTIONS).notification("Module failed to load...")
-		end
-	end
-	script.Parent.MouseButton1Click:Connect(function() loadModule() end)
-	
-	-- Additional plugin modules
-	task.wait(1.5)
-	if game.gameId == 5794311181 then loadModule("https://yarhm.mhi.im/static/cnasim.yrmdl") end -- CNA Simulator
-end
-local function UVBTWP_routine() -- Routine: StarterGui.TIESAS.AddCustomModule.Cancel.LocalScript
-    local script = Instance.new("LocalScript")
-    script.Name = "LocalScript"
-    script.Parent = Converted["_Cancel"]
-    local req = require
-    local require = function(obj)
-        local routine = routine_module_scripts[obj]
-        if routine then
-            return routine()
-        end
-        return req(obj)
-    end
-
-
-	local ts = game:GetService("TweenService")
-	
-	script.Parent.MouseButton1Click:Connect(function()
-		ts:Create(script.Parent.Parent.Parent.Menu.UIScale, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Scale = 1
-		}):Play()
-		ts:Create(script.Parent.Parent, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Position = UDim2.fromScale(0.5, -0.5)
-		}):Play()
-	end)
-end
-local function HCWF_routine() -- Routine: StarterGui.TIESAS.Menu.UIStroke.UIGradient.Animator
-    local script = Instance.new("LocalScript")
-    script.Name = "Animator"
-    script.Parent = Converted["_UIGradient4"]
-    local req = require
-    local require = function(obj)
-        local routine = routine_module_scripts[obj]
-        if routine then
-            return routine()
-        end
-        return req(obj)
-    end
-
-
-	local ts = game:GetService("TweenService")
-	
-	ts:Create(script.Parent, TweenInfo.new(
-		10, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut,
-		math.huge, false), {
-			Rotation = -180
-		}):Play()
 end
 local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.CloseOpen
     local script = Instance.new("LocalScript")
@@ -9082,7 +6294,7 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 	
 	local menu = script.Parent.Parent
 	local Spring = require(menu.Parent.Spring)
-	local DraggableObject = require(menu.Parent.DraggableObject)
+	local DraggableObject = require(menu.Parent.FUNCTIONS).DraggableObject
 	local Bezier = require(menu.Parent.Bezier)
 	
 	-- Tween the TextLabel transparency
@@ -9093,6 +6305,7 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 	
 	local closed = false
 	local springing = false
+	local lastSpringActivity = os.clock()
 	
 	local closing
 	
@@ -9112,6 +6325,8 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 	
 	-- Functions to update spring goals and offsets
 	local function setSpringPosGoal(udim2)
+		springing = true
+		lastSpringActivity = os.clock()
 		MenuPosXScale:SetGoal(udim2.X.Scale)
 		MenuPosYScale:SetGoal(udim2.Y.Scale)
 		MenuPosXOffset:SetGoal(udim2.X.Offset)
@@ -9119,19 +6334,31 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 	end
 	
 	local function setSpringSizeGoal(udim2)
+		springing = true
+		lastSpringActivity = os.clock()
 		MenuSizeXOffset:SetGoal(udim2.X.Offset)
 		MenuSizeYOffset:SetGoal(udim2.Y.Offset)
 	end
 	
 	-- Render step to update menu position and size based on spring values
-	RunService.RenderStepped:Connect(function()
+	appRuntime.track(RunService.RenderStepped:Connect(function()
+		if not appRuntime.alive or not menu.Parent then return end
 		if springing then
 			menu.Position = UDim2.new(MenuPosXScale.Offset, MenuPosXOffset.Offset, MenuPosYScale.Offset, MenuPosYOffset.Offset)
 			menu.Size = UDim2.fromOffset(MenuSizeXOffset.Offset, MenuSizeYOffset.Offset)
 			menu.Rotation = MenuRotation.Offset
 			MenuRotation:SetGoal(0)
+			if os.clock() - lastSpringActivity > 0.45
+				and math.abs(MenuPosXScale.Offset - MenuPosXScale.Goal) < 0.0005
+				and math.abs(MenuPosYScale.Offset - MenuPosYScale.Goal) < 0.0005
+				and math.abs(MenuPosXOffset.Offset - MenuPosXOffset.Goal) < 0.25
+				and math.abs(MenuPosYOffset.Offset - MenuPosYOffset.Goal) < 0.25
+				and math.abs(MenuSizeXOffset.Offset - MenuSizeXOffset.Goal) < 0.25
+				and math.abs(MenuSizeYOffset.Offset - MenuSizeYOffset.Goal) < 0.25 then
+				springing = false
+			end
 		end
-	end)
+	end))
 	
 	-- Initialize draggable menu
 	local MenuDrag = DraggableObject.new(script.Parent, menu, false, true)
@@ -9311,139 +6538,18 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 		end)
 	end
 	menu.CanvasGroup.Opener.MouseButton1Click:Connect(openMenu)
-	UserInputService.InputBegan:Connect(function(inp, proc)
+	appRuntime.track(UserInputService.InputBegan:Connect(function(inp, proc)
 		if proc then return end
 	
 		if UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) and inp.KeyCode == Enum.KeyCode.Y then
 			openMenu()
 		end
-	end)
-	
-	-- Parallax camera offset
-	local RunService = game:GetService("RunService")
-	local cam = workspace.CurrentCamera
-	
-	local lastLook = cam.CFrame.LookVector
-	local uiOffset = Vector2.new(0, 0)
-	local prevUiOffset = Vector2.new(0, 0)
-	
-	local function normalizeAngle(angle)
-		while angle > math.pi do angle = angle - 2 * math.pi end
-		while angle <= -math.pi do angle = angle + 2 * math.pi end
-		return angle
-	end
-	
-	RunService.RenderStepped:Connect(function(dt)
-		local look = cam.CFrame.LookVector
-	
-		local oldYaw   = math.atan2(lastLook.X, lastLook.Z)        
-		local newYaw   = math.atan2(look.X, look.Z)
-	
-		local oldPitch = math.asin(math.clamp(lastLook.Y, -1, 1))
-		local newPitch = math.asin(math.clamp(look.Y, -1, 1))
-	
-		local deltaYaw   = normalizeAngle(newYaw - oldYaw)
-		local deltaPitch = newPitch - oldPitch  
-	
-		local targetOffset = Vector2.new(deltaYaw * 15, deltaPitch * 15)
-	
-		uiOffset = uiOffset:Lerp(targetOffset, 0.2)
-		--uiOffset = uiOffset * Vector2.new(-1, 1)
-	
-		
-		if not OpenerDraggable then
-			MenuPosXOffset:SetGoal((MenuPosXOffset.Goal - prevUiOffset.X) + uiOffset.X)
-			MenuPosYOffset:SetGoal((MenuPosYOffset.Goal - prevUiOffset.Y) + uiOffset.Y)
-		end
-		prevUiOffset = uiOffset
-		
-		lastLook = look
-	end)
+	end))
 	
 	
 	
 	script.Parent.AllowForSpring.Event:Wait()
 	springing = true
-end
-local function VTLALB_routine() -- Routine: StarterGui.TIESAS.Menu.List.AutoSetup
-    local script = Instance.new("LocalScript")
-    script.Name = "AutoSetup"
-    script.Parent = Converted["_List"]
-    local req = require
-    local require = function(obj)
-        local routine = routine_module_scripts[obj]
-        if routine then
-            return routine()
-        end
-        return req(obj)
-    end
-
-
-	--local ts = game:GetService("TweenService")
-	
-	
-	--local States = {}
-	
-	--local FloatingButtonConnectionsMouse = {}
-	--local FloatingButtonConnectionsTouch = {}
-	
-	--task.wait(0.1)
-	
-	--AREA = script.Parent.Parent.Area
-	
-	--local function calculateWidth(n)
-	--	if n <= 3 then
-	--		return 30
-	--	else
-	--		local base = 30
-	--		local additional = math.floor((n - 3) / 3) * 30
-	--		return base + additional
-	--	end
-	--end
-	
-	----local listlayout = Instance.new("UIListLayout")
-	----listlayout.Parent = AREA
-	----listlayout.Padding = UDim.new(0, 10)
-	----listlayout.FillDirection = Enum.FillDirection.Vertical
-	----listlayout.SortOrder = Enum.SortOrder.LayoutOrder
-	----listlayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	
-	
-	
-	
-	--task.wait(.5) -- magic number to wait modules to load lmao
-	--task.spawn(function()
-	--	require(script.Parent.Parent.Parent.FUNCTIONS).refreshlist()
-	--	--for i = 1, 10 do
-	--	--	task.wait(.1)
-	--	--	require(script.Parent.Parent.Parent.FUNCTIONS).refreshlist()
-	--	--end
-	--end)
-end
-local function TVLRH_routine() -- Routine: StarterGui.TIESAS.Menu.List.AddCustomModule.LocalScript
-    local script = Instance.new("LocalScript")
-    script.Name = "LocalScript"
-    script.Parent = Converted["_AddCustomModule1"]
-    local req = require
-    local require = function(obj)
-        local routine = routine_module_scripts[obj]
-        if routine then
-            return routine()
-        end
-        return req(obj)
-    end
-
-
-	local ts = game:GetService("TweenService")
-	
-	script.Parent.MouseButton1Click:Connect(function()
-		ts:Create(script.Parent.Parent.Parent.UIScale, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Scale = 0.9
-		}):Play()
-		ts:Create(script.Parent.Parent.Parent.Parent.AddCustomModule, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Position = UDim2.fromScale(0.5, 0.5)
-		}):Play()
-	end)
 end
 local function KUFNO_routine() -- Routine: StarterGui.TIESAS.FloatingButtonSetting.ControlBarContainer.ControlBar.Visibility.LocalScript
     local script = Instance.new("LocalScript")
@@ -9502,14 +6608,7 @@ end
 
 coroutine.wrap(DSZIHQM_routine)()
 coroutine.wrap(XXZOB_routine)()
-coroutine.wrap(ONOAH_routine)()
-coroutine.wrap(JFQXCG_routine)()
-coroutine.wrap(EJGX_routine)()
-coroutine.wrap(FRPPL_routine)()
-coroutine.wrap(VOBA_routine)()
-coroutine.wrap(HCWF_routine)()
 coroutine.wrap(AWDPHWS_routine)()
-coroutine.wrap(VTLALB_routine)()
 coroutine.wrap(KUFNO_routine)()
 coroutine.wrap(XLYNZG_routine)()
 coroutine.wrap(XAPKH_routine)()
