@@ -43,6 +43,19 @@ else
 	notifyBeforeLoad("Partida de " .. currentGameName .. " detectada. Cargando Tiesas Scripts...")
 end
 
+-- Una reejecución en Delta no debe dejar menús, highlights ni conexiones V5
+-- duplicadas. El runtime anterior se detiene al iniciar el módulo de MM2.
+pcall(function()
+	local coreGui = game:GetService("CoreGui")
+	for _, child in ipairs(coreGui:GetChildren()) do
+		if child.Name == "TiesasScripts"
+			or child.Name == "TiesasMM2ESP"
+			or child.Name == "ESPIndicators" then
+			child:Destroy()
+		end
+	end
+end)
+
 -- Instances:
 
 local Converted = {
@@ -1824,7 +1837,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 			accentColor = Color3.fromRGB(188, 166, 224),
 			primaryColor = Color3.fromRGB(255, 248, 252),
 			secondaryColor = Color3.fromRGB(242, 232, 247),
-		
+
 			backgroundColorCSQ = ColorSequence.new(Color3.fromRGB(233, 222, 246), Color3.fromRGB(252, 228, 238)),	
 			strokeColorCSQ = ColorSequence.new{
 				ColorSequenceKeypoint.new(0, Color3.fromRGB(194, 231, 218)),
@@ -5376,13 +5389,225 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	module["gameId"] = game.GameId
 	
 	local fu = require(getgenv().TIESAS.FUNCTIONS)
-	local espindc = require(script.Parent.ESPIndicator)
-	
-	
-	
-	
-	
-	local espcontainer = espindc.new({ArrowEdgePadding = 50, ArrowShowDistanceText = false,})
+	local runtimeEnvironment = getgenv()
+	local previousRuntime = runtimeEnvironment.TIESAS_MM2_V5_RUNTIME
+	if type(previousRuntime) == "table" and type(previousRuntime.stop) == "function" then
+		pcall(previousRuntime.stop)
+	end
+
+	local runtime = {
+		alive = true,
+		connections = {},
+		cleanups = {},
+	}
+	function runtime.track(connection)
+		if connection then
+			table.insert(runtime.connections, connection)
+		end
+		return connection
+	end
+	function runtime.cleanup(callback)
+		if type(callback) == "function" then
+			table.insert(runtime.cleanups, callback)
+		end
+	end
+	function runtime.stop()
+		if not runtime.alive then return end
+		runtime.alive = false
+		for _, connection in ipairs(runtime.connections) do
+			pcall(function() connection:Disconnect() end)
+		end
+		for _, callback in ipairs(runtime.cleanups) do
+			pcall(callback)
+		end
+		table.clear(runtime.connections)
+		table.clear(runtime.cleanups)
+	end
+	runtimeEnvironment.TIESAS_MM2_V5_RUNTIME = runtime
+	runtime.track(script.Parent.AncestryChanged:Connect(function(_, parent)
+		if not parent then runtime.stop() end
+	end))
+
+	-- ESP propio de MM2 V5. Sus grupos pertenecen a esta instancia y las flechas
+	-- se actualizan a 15 Hz, evitando los tweens y limpiezas de cada frame del
+	-- contenedor genérico.
+	local function createMM2ESPContainer()
+		local coreGui = game:GetService("CoreGui")
+		local oldGui = coreGui:FindFirstChild("TiesasMM2ESP")
+		if oldGui then oldGui:Destroy() end
+
+		local screenGui = Instance.new("ScreenGui")
+		screenGui.Name = "TiesasMM2ESP"
+		screenGui.IgnoreGuiInset = true
+		screenGui.ResetOnSpawn = false
+		screenGui.DisplayOrder = 4
+		screenGui.Parent = coreGui
+
+		local container = {
+			ScreenGui = screenGui,
+			Indicators = {},
+			Groups = {},
+		}
+
+		local function removeIndicator(target)
+			local indicator = container.Indicators[target]
+			if not indicator then return end
+			if indicator.highlight then indicator.highlight:Destroy() end
+			if indicator.arrow then indicator.arrow:Destroy() end
+			if indicator.label then indicator.label:Destroy() end
+			container.Indicators[target] = nil
+			for _, group in pairs(container.Groups) do
+				group[target] = nil
+			end
+		end
+
+		function container:Add(target, options)
+			if not target then return end
+			options = options or {}
+			removeIndicator(target)
+
+			local color = options.AccentColor or Color3.new(1, 1, 0)
+			local highlight = Instance.new("Highlight")
+			highlight.Name = "TiesasHighlight"
+			highlight.Adornee = target
+			highlight.FillColor = color
+			highlight.OutlineColor = color
+			highlight.FillTransparency = options.HighlightFillTransparency or 0.68
+			highlight.OutlineTransparency = 0
+			highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			highlight.Parent = screenGui
+
+			local arrow
+			if options.ArrowShow then
+				arrow = Instance.new("ImageLabel")
+				arrow.Name = "TiesasArrow"
+				arrow.AnchorPoint = Vector2.new(0.5, 0.5)
+				arrow.BackgroundTransparency = 1
+				arrow.Image = "rbxassetid://97136202386756"
+				arrow.ImageColor3 = color
+				arrow.Size = options.ArrowSize or UDim2.fromOffset(40, 40)
+				arrow.Visible = false
+				arrow.Parent = screenGui
+			end
+
+			local label
+			if options.ShowLabel then
+				label = Instance.new("BillboardGui")
+				label.Name = "TiesasLabel"
+				label.Adornee = target
+				label.AlwaysOnTop = true
+				label.MaxDistance = 99999
+				label.Size = UDim2.fromOffset(95, 34)
+				label.StudsOffset = Vector3.new(0, 3, 0)
+				label.Parent = screenGui
+				local text = Instance.new("TextLabel")
+				text.BackgroundTransparency = 1
+				text.Size = UDim2.fromScale(1, 1)
+				text.Font = Enum.Font.GothamBold
+				text.Text = options.LabelText or "Objetivo"
+				text.TextColor3 = color
+				text.TextScaled = true
+				text.Parent = label
+				local stroke = Instance.new("UIStroke")
+				stroke.Thickness = 1.5
+				stroke.Parent = text
+			end
+
+			container.Indicators[target] = {
+				highlight = highlight,
+				arrow = arrow,
+				label = label,
+			}
+			local groupName = options.GroupName
+			if groupName then
+				container.Groups[groupName] = container.Groups[groupName] or {}
+				container.Groups[groupName][target] = true
+			end
+		end
+
+		function container:Remove(target)
+			removeIndicator(target)
+		end
+
+		function container:RemoveGroup(groupName)
+			local group = container.Groups[groupName]
+			if not group then return end
+			local targets = {}
+			for target in pairs(group) do table.insert(targets, target) end
+			container.Groups[groupName] = nil
+			for _, target in ipairs(targets) do removeIndicator(target) end
+		end
+
+		function container:ClearAllGroups()
+			local targets = {}
+			for target in pairs(container.Indicators) do table.insert(targets, target) end
+			for _, target in ipairs(targets) do removeIndicator(target) end
+			table.clear(container.Groups)
+		end
+
+		function container:Destroy()
+			container:ClearAllGroups()
+			if screenGui.Parent then screenGui:Destroy() end
+		end
+
+		local arrowAccumulator = 0
+		runtime.track(game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
+			if not runtime.alive then return end
+			arrowAccumulator = arrowAccumulator + deltaTime
+			if arrowAccumulator < 1 / 15 then return end
+			arrowAccumulator = 0
+
+			local camera = workspace.CurrentCamera
+			if not camera then return end
+			local viewport = camera.ViewportSize
+			local center = viewport * 0.5
+			local padding = 54
+			for target, indicator in pairs(container.Indicators) do
+				local arrow = indicator.arrow
+				if not target.Parent then
+					removeIndicator(target)
+				elseif arrow then
+					local position
+					if target:IsA("Model") then
+						position = target:GetPivot().Position
+					elseif target:IsA("BasePart") then
+						position = target.Position
+					end
+					if position then
+						local projected, onScreen = camera:WorldToViewportPoint(position)
+						if onScreen and projected.Z > 0 then
+							arrow.Visible = false
+						else
+							local localPosition = camera.CFrame:PointToObjectSpace(position)
+							local direction = Vector2.new(localPosition.X, -localPosition.Y)
+							if localPosition.Z > 0 then direction = -direction end
+							if direction.Magnitude < 0.001 then
+								direction = Vector2.new(0, -1)
+							end
+							direction = direction.Unit
+							local horizontal = math.max(1, viewport.X * 0.5 - padding)
+							local vertical = math.max(1, viewport.Y * 0.5 - padding)
+							local scale = math.min(
+								horizontal / math.max(math.abs(direction.X), 0.001),
+								vertical / math.max(math.abs(direction.Y), 0.001)
+							)
+							local point = center + direction * scale
+							arrow.Position = UDim2.fromOffset(point.X, point.Y)
+							arrow.Rotation = math.deg(math.atan2(direction.Y, direction.X)) + 90
+							arrow.Visible = true
+						end
+					else
+						arrow.Visible = false
+					end
+				end
+			end
+		end))
+
+		return container
+	end
+
+	local espcontainer = createMM2ESPContainer()
+	runtime.cleanup(function() espcontainer:Destroy() end)
 	
 	local playerESP = true
 	local coinAutoCollect = false
@@ -5636,7 +5861,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		local observedMurderer
 		local observedSheriff
 		local ignoreRolesUntil = 0
-		while task.wait(0.25) do
+		while runtime.alive and task.wait(0.25) do
 			local map = getMap()
 			if map ~= observedMap then
 				if observedMap and not map then
@@ -5669,17 +5894,17 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	if not game.ReplicatedStorage:WaitForChild("Remotes", 5) then
 		fu.dialog(currentGameName .. " no detectado", "No se han encontrado los datos necesarios de " .. currentGameName .. ".", {"Cerrar"})
-	
+
 		fu.waitfordialog()
 		fu.closedialog()
 		return
 	else
-		game.ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Gameplay"):WaitForChild("PlayerDataChanged", 5).OnClientEvent:Connect(function(data)
+		runtime.track(game.ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Gameplay"):WaitForChild("PlayerDataChanged", 5).OnClientEvent:Connect(function(data)
 			playerData = data
 			if playerESP then
 				reloadESP()
 			end
-		end)
+		end))
 	end
 	
 	
@@ -5762,37 +5987,38 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	-- Los estados permanecen activos entre rondas. Cada mapa nuevo reconstruye
 	-- los tres grupos, aunque el script se haya ejecutado desde el lobby.
-	workspace.ChildAdded:Connect(function(ch)
+	runtime.track(workspace.ChildAdded:Connect(function(ch)
 		if isMapModel(ch) then
 			task.spawn(function()
 				task.wait(0.25)
-				if not ch.Parent then return end
+				if not runtime.alive or not ch.Parent then return end
 				reloadAllESP()
 
 				local startedWaiting = os.clock()
 				repeat
 					task.wait(0.4)
-				until not ch.Parent
+				until not runtime.alive
+					or not ch.Parent
 					or findMurderer()
 					or findSheriff()
 					or os.clock() - startedWaiting > 12
 
-				if ch.Parent and playerESP then
+				if runtime.alive and ch.Parent and playerESP then
 					reloadESP()
 				end
 			end)
 		end
-	end)
+	end))
 
-	workspace.ChildRemoved:Connect(function(ch)
+	runtime.track(workspace.ChildRemoved:Connect(function(ch)
 		if isMapModel(ch) then
 			playerData = {}
 			espcontainer:ClearAllGroups()
 		end
-	end)
+	end))
 
 	-- Dropped Gun ESP
-	workspace.DescendantAdded:Connect(function(ch)
+	runtime.track(workspace.DescendantAdded:Connect(function(ch)
 		if trapDetection and ch.Name == "Trap" and (ch.Parent:IsA("Folder") or ch.Parent:IsA("Model")) then
 			reloadTrapESP()
 			fu.notification("El asesino ha colocado una trampa.")
@@ -5828,9 +6054,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				localplayer.Character:PivotTo(previousPosition)
 			end
 		end
-	end)
-	
-	workspace.DescendantRemoving:Connect(function(ch)
+		end))
+		
+		runtime.track(workspace.DescendantRemoving:Connect(function(ch)
 		if gunDropESP and ch.Name == "GunDrop" then
 			espcontainer:RemoveGroup("gun")
 			fu.notification("Alguien ha recogido el arma.")
@@ -5882,22 +6108,22 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			--	end
 			--end
 		end
-	end)
+	end))
 
-	local function watchPlayerForESP(player)
-		player.CharacterAdded:Connect(function()
-			task.delay(0.5, function()
-				if playerESP then
-					reloadESP()
-				end
-			end)
-		end)
-	end
+		local function watchPlayerForESP(player)
+			runtime.track(player.CharacterAdded:Connect(function()
+				task.delay(0.5, function()
+					if runtime.alive and playerESP then
+						reloadESP()
+					end
+				end)
+			end))
+		end
 
 	for _, player in ipairs(game.Players:GetPlayers()) do
 		watchPlayerForESP(player)
 	end
-	game.Players.PlayerAdded:Connect(watchPlayerForESP)
+		runtime.track(game.Players.PlayerAdded:Connect(watchPlayerForESP))
 	
 	function getClosestModelToPlayer(player, models)
 		local closestModel = nil
@@ -5927,7 +6153,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	-- Coin autocollect
 	task.spawn(
 		function()
-			while task.wait(0.1) do
+				while runtime.alive and task.wait(0.1) do
 				if not coinAutoCollect then continue end
 	
 				if getMap() then
@@ -5954,10 +6180,11 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	
 	
-	-- Aim V4 móvil. No captura InputBegan, TouchTap ni __namecall: únicamente
+	-- Aim V5 móvil. No captura InputBegan, TouchTap ni __namecall: únicamente
 	-- calcula un destino cuando SHOOT (o una automatización ya activada) dispara.
-	-- Para jugadores remotos usa historial de posiciones, porque MoveDirection y
-	-- AssemblyLinearVelocity no son señales replicadas autoritativas.
+	-- Separa retraso de envío, edad de replicación y viaje del proyectil. Para
+	-- jugadores remotos usa historial de posiciones, porque MoveDirection y
+	-- AssemblyLinearVelocity no son señales autoritativas en este cliente.
 	local predictionTracks = setmetatable({}, {__mode = "k"})
 	local smoothedNetworkPing = 0
 	local smoothedDataPing = 0
@@ -5965,18 +6192,23 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local httpService = game:GetService("HttpService")
 	local statsService = game:GetService("Stats")
 	local aimDataFolder = "TiesasScripts"
-	local aimDataPath = aimDataFolder .. "/mm2_aim_v4.json"
+	local aimDataPath = aimDataFolder .. "/mm2_aim_v5.json"
+	local legacyAimDataPath = aimDataFolder .. "/mm2_aim_v4.json"
 	local aimData = {
-		version = 4,
+		version = 5,
 		knifePhysics = {
 			speed = tonumber(getgenv().TIESAS_MEASURED_KNIFE_SPEED) or 200,
 			gravity = 0,
 			measurements = 0,
 			gravityMeasurements = 0,
+			model = "unknown",
+			modelConfidence = 0,
+			ballisticVotes = 0,
+			linearVotes = 0,
 			recentSpeeds = {},
 			recentGravities = {},
 		},
-		gunProfiles = {},
+		routeStats = {},
 		recentShots = {},
 	}
 	local saveAimGeneration = 0
@@ -6030,17 +6262,42 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 	local function loadLocalAimData()
 		local decoded = readLocalJson(aimDataPath)
-		if decoded and decoded.version == 4 then
+		if decoded and decoded.version == 5 then
 			if type(decoded.knifePhysics) == "table" then
 				aimData.knifePhysics = decoded.knifePhysics
 			end
-			if type(decoded.gunProfiles) == "table" then
-				aimData.gunProfiles = decoded.gunProfiles
+			if type(decoded.routeStats) == "table" then
+				aimData.routeStats = decoded.routeStats
 			end
 			if type(decoded.recentShots) == "table" then
 				aimData.recentShots = decoded.recentShots
 			end
 			return
+		end
+
+		-- Solo se migran mediciones físicas del cuchillo. Las correcciones
+		-- geométricas V4 no se importan porque mezclaban tiempos de ida y vuelta.
+		local legacy = readLocalJson(legacyAimDataPath)
+		if legacy and legacy.version == 4 and type(legacy.knifePhysics) == "table" then
+			local physics = legacy.knifePhysics
+			aimData.knifePhysics.speed = math.clamp(
+				tonumber(physics.speed) or 200,
+				70,
+				280
+			)
+			aimData.knifePhysics.measurements = math.clamp(
+				tonumber(physics.measurements) or 0,
+				0,
+				100
+			)
+			if type(physics.recentSpeeds) == "table" then
+				for index = math.max(1, #physics.recentSpeeds - 11), #physics.recentSpeeds do
+					local speed = tonumber(physics.recentSpeeds[index])
+					if speed and speed >= 70 and speed <= 280 then
+						table.insert(aimData.knifePhysics.recentSpeeds, speed)
+					end
+				end
+			end
 		end
 	end
 
@@ -6049,7 +6306,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		saveAimGeneration = saveAimGeneration + 1
 		local generation = saveAimGeneration
 		task.delay(0.4, function()
-			if generation ~= saveAimGeneration then return end
+			if not runtime.alive or generation ~= saveAimGeneration then return end
 			pcall(function()
 				if type(isfolder) == "function" and type(makefolder) == "function"
 					and not isfolder(aimDataFolder) then
@@ -6067,6 +6324,17 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		and aimData.knifePhysics.recentSpeeds or {}
 	aimData.knifePhysics.recentGravities = type(aimData.knifePhysics.recentGravities) == "table"
 		and aimData.knifePhysics.recentGravities or {}
+	aimData.routeStats = type(aimData.routeStats) == "table"
+		and aimData.routeStats or {}
+	aimData.recentShots = type(aimData.recentShots) == "table"
+		and aimData.recentShots or {}
+	while #aimData.knifePhysics.recentSpeeds > 12 do
+		table.remove(aimData.knifePhysics.recentSpeeds, 1)
+	end
+	while #aimData.knifePhysics.recentGravities > 8 do
+		table.remove(aimData.knifePhysics.recentGravities, 1)
+	end
+	while #aimData.recentShots > 60 do table.remove(aimData.recentShots, 1) end
 	local measuredKnifeSpeed = math.clamp(
 		tonumber(aimData.knifePhysics.speed) or 200,
 		70,
@@ -6079,34 +6347,15 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	)
 	getgenv().TIESAS_MEASURED_KNIFE_SPEED = measuredKnifeSpeed
 
-	local function ensureGunProfile(key)
-		local profile = aimData.gunProfiles[key]
-		if type(profile) ~= "table" then
-			profile = {
-				correction = 0,
-				samples = 0,
-				geometricHits = 0,
-				decayedAt = os.time(),
-			}
-			aimData.gunProfiles[key] = profile
+	local function readReceiveAge(root)
+		local ok, value = pcall(function() return root.ReceiveAge end)
+		if not ok or type(value) ~= "number" or value <= 0 or value > 0.35 then
+			return nil
 		end
-		profile.correction = math.clamp(tonumber(profile.correction) or 0, -0.055, 0.055)
-		profile.samples = math.clamp(tonumber(profile.samples) or 0, 0, 200)
-		profile.geometricHits = math.clamp(tonumber(profile.geometricHits) or 0, 0, 200)
-		local now = os.time()
-		local decayedAt = tonumber(profile.decayedAt) or now
-		local elapsedDays = math.max(0, now - decayedAt) / 86400
-		if elapsedDays >= 1 then
-			local decay = math.exp(-elapsedDays / 35)
-			profile.correction = profile.correction * decay
-			profile.samples = profile.samples * decay
-			profile.geometricHits = profile.geometricHits * decay
-			profile.decayedAt = now
-		end
-		return profile
+		return value
 	end
 
-	local function samplePlayerMotion(player, forceSample)
+	local function samplePlayerMotion(player, forceSample, suppliedTime)
 		local character = player and player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -6115,103 +6364,164 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			return nil
 		end
 
-		local now = os.clock()
+		local now = suppliedTime or os.clock()
 		local track = predictionTracks[player]
-		if not track or track.character ~= character or now - (track.time or 0) > 0.7 then
+		if not track or track.character ~= character
+			or now - (track.lastSeenAt or 0) > 0.85 then
 			track = {
 				character = character,
 				samples = {},
-				velocity = Vector3.new(0, 0, 0),
-				acceleration = Vector3.new(0, 0, 0),
-				confidence = 0.25,
-				behavior = "warming",
-				turnScore = 0,
-				brakeScore = 0,
-				time = now,
+				lastSeenAt = now,
 			}
 			predictionTracks[player] = track
 		end
 
-		local lastSample = track.samples[#track.samples]
+		local samples = track.samples
+		local lastSample = samples[#samples]
 		if lastSample then
 			local elapsed = now - lastSample.time
-			if elapsed < (forceSample and 0.012 or 0.035) then
-				track.time = now
+			if elapsed < (forceSample and 0.01 or 0.032) then
+				track.lastSeenAt = now
 				return track
 			end
-			local moved = (root.Position - lastSample.position).Magnitude
-			if moved > math.max(16, elapsed * 75) then
-				track.samples = {}
-				track.velocity = Vector3.new(0, 0, 0)
-				track.acceleration = Vector3.new(0, 0, 0)
-				track.confidence = 0.18
-				track.behavior = "teleport"
+			if (root.Position - lastSample.position).Magnitude
+				> math.max(15, elapsed * 78) then
+				table.clear(samples)
+				track.teleportedAt = now
 			end
 		end
 
-		table.insert(track.samples, {position = root.Position, time = now})
-		while #track.samples > 10
-			or (#track.samples > 2 and now - track.samples[1].time > 0.62) do
-			table.remove(track.samples, 1)
+		table.insert(samples, {
+			position = root.Position,
+			time = now,
+			receiveAge = readReceiveAge(root),
+		})
+		while #samples > 12
+			or (#samples > 3 and now - samples[1].time > 0.68) do
+			table.remove(samples, 1)
 		end
+		track.lastSeenAt = now
+		track.position = root.Position
+		return track
+	end
 
-		local segments = {}
-		local allVelocities = {}
-		for index = 2, #track.samples do
-			local older = track.samples[index - 1]
-			local newer = track.samples[index]
-			local elapsed = newer.time - older.time
-			if elapsed >= 0.012 and elapsed <= 0.2 then
-				local velocity = (newer.position - older.position) / elapsed
-				if velocity.Magnitude <= 72 then
-					table.insert(segments, {
-						velocity = velocity,
-						time = (older.time + newer.time) * 0.5,
-					})
-					table.insert(allVelocities, velocity)
+	local function weightedLinearFit(samples, firstIndex, lastIndex, now)
+		if lastIndex - firstIndex < 1 then return nil end
+		local residualWeights
+		local velocity
+		local positionNow
+		local meanResidual = math.huge
+
+		for pass = 1, 2 do
+			local totalWeight = 0
+			local sumTime = 0
+			local sumTimeSquared = 0
+			local sumPosition = Vector3.zero
+			local sumTimePosition = Vector3.zero
+			for index = firstIndex, lastIndex do
+				local sample = samples[index]
+				local relativeTime = sample.time - now
+				local recency = math.exp(relativeTime / 0.24)
+				local robustWeight = residualWeights and residualWeights[index] or 1
+				local weight = recency * robustWeight
+				totalWeight = totalWeight + weight
+				sumTime = sumTime + relativeTime * weight
+				sumTimeSquared = sumTimeSquared
+					+ relativeTime * relativeTime * weight
+				sumPosition = sumPosition + sample.position * weight
+				sumTimePosition = sumTimePosition
+					+ sample.position * (relativeTime * weight)
+			end
+			if totalWeight <= 0 then return nil end
+			local denominator = sumTimeSquared
+				- sumTime * sumTime / totalWeight
+			if denominator <= 0.000001 then return nil end
+			velocity = (
+				sumTimePosition - sumPosition * (sumTime / totalWeight)
+			) / denominator
+			local meanTime = sumTime / totalWeight
+			positionNow = sumPosition / totalWeight - velocity * meanTime
+
+			local residuals = {}
+			local totalResidual = 0
+			for index = firstIndex, lastIndex do
+				local sample = samples[index]
+				local estimated = positionNow
+					+ velocity * (sample.time - now)
+				local residual = (sample.position - estimated).Magnitude
+				residuals[index] = residual
+				totalResidual = totalResidual + residual
+			end
+			meanResidual = totalResidual / (lastIndex - firstIndex + 1)
+			if pass == 1 then
+				local values = {}
+				for index = firstIndex, lastIndex do
+					table.insert(values, residuals[index])
+				end
+				local scale = math.max(medianNumber(values) or 0, 0.08)
+				residualWeights = {}
+				for index = firstIndex, lastIndex do
+					residualWeights[index] = math.clamp(
+						scale * 2.2 / math.max(residuals[index], 0.001),
+						0.16,
+						1
+					)
 				end
 			end
 		end
 
-		if #segments == 0 then
-			track.position = root.Position
-			track.time = now
-			track.confidence = math.min(track.confidence, 0.25)
-			return track
+		return velocity, positionNow, meanResidual,
+			samples[lastIndex].time - samples[firstIndex].time
+	end
+
+	local function estimateMotion(track, root, humanoid, now)
+		local samples = track.samples
+		local count = #samples
+		if count < 2 then
+			return {
+				velocity = Vector3.zero,
+				acceleration = Vector3.zero,
+				confidence = 0.18,
+				behavior = "warming",
+				turnScore = 0,
+				brakeScore = 0,
+				airborne = false,
+				observationAge = samples[count] and samples[count].receiveAge,
+			}
 		end
 
-		local robustCenter = medianVector(allVelocities)
-		local filteredSegments = {}
-		local rejectionRadius = math.max(10, robustCenter.Magnitude * 0.9 + 4)
-		for _, segment in ipairs(segments) do
-			if (segment.velocity - robustCenter).Magnitude <= rejectionRadius
-				or #segments <= 3 then
-				table.insert(filteredSegments, segment)
-			end
-		end
-		if #filteredSegments == 0 then filteredSegments = segments end
+		local fullVelocity, _, residual, span = weightedLinearFit(
+			samples,
+			1,
+			count,
+			now
+		)
+		if not fullVelocity then return nil end
+		local recentFirst = math.max(1, count - 4)
+		local recentVelocity = weightedLinearFit(
+			samples,
+			recentFirst,
+			count,
+			now
+		) or fullVelocity
+		local olderLast = math.max(2, count - 3)
+		local olderVelocity = weightedLinearFit(
+			samples,
+			1,
+			olderLast,
+			now
+		) or fullVelocity
 
-		local weightedVelocity = Vector3.new(0, 0, 0)
-		local totalWeight = 0
-		for index, segment in ipairs(filteredSegments) do
-			local weight = index * index
-			weightedVelocity = weightedVelocity + segment.velocity * weight
-			totalWeight = totalWeight + weight
-		end
-		local recentVelocity = totalWeight > 0
-			and weightedVelocity / totalWeight or robustCenter
-
-		local split = math.max(1, math.floor(#filteredSegments * 0.5))
-		local olderVelocity = Vector3.new(0, 0, 0)
-		local olderCount = 0
-		for index = 1, split do
-			olderVelocity = olderVelocity + filteredSegments[index].velocity
-			olderCount = olderCount + 1
-		end
-		olderVelocity = olderCount > 0 and olderVelocity / olderCount or recentVelocity
-
-		local recentHorizontal = Vector3.new(recentVelocity.X, 0, recentVelocity.Z)
-		local olderHorizontal = Vector3.new(olderVelocity.X, 0, olderVelocity.Z)
+		local recentHorizontal = Vector3.new(
+			recentVelocity.X,
+			0,
+			recentVelocity.Z
+		)
+		local olderHorizontal = Vector3.new(
+			olderVelocity.X,
+			0,
+			olderVelocity.Z
+		)
 		local directionAgreement = 1
 		if recentHorizontal.Magnitude > 1.2 and olderHorizontal.Magnitude > 1.2 then
 			directionAgreement = math.clamp(
@@ -6220,136 +6530,165 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				1
 			)
 		end
-		local turnScore = math.clamp((1 - directionAgreement) / 1.35, 0, 1)
-		local brakeScore = 0
-		if olderHorizontal.Magnitude > 3 then
-			brakeScore = math.clamp(
+		local turnScore = math.clamp((1 - directionAgreement) / 1.25, 0, 1)
+		local brakeScore = olderHorizontal.Magnitude > 3
+			and math.clamp(
 				(olderHorizontal.Magnitude - recentHorizontal.Magnitude)
 					/ olderHorizontal.Magnitude,
 				0,
 				1
-			)
-		end
+			) or 0
 
-		local jitterTotal = 0
-		local jitterCount = 0
-		for index = 2, #filteredSegments do
-			jitterTotal = jitterTotal + (
-				filteredSegments[index].velocity
-					- filteredSegments[index - 1].velocity
-			).Magnitude
-			jitterCount = jitterCount + 1
-		end
-		local jitterRatio = jitterCount > 0
-			and math.clamp(
-				(jitterTotal / jitterCount) / math.max(recentVelocity.Magnitude + 7, 7),
-				0,
-				1
-			) or 0.35
-
-		local velocity = recentVelocity
-		if track.velocity and track.velocity.Magnitude > 0 then
-			local smoothing = turnScore > 0.45 and 0.9 or 0.72
-			velocity = track.velocity:Lerp(recentVelocity, smoothing)
-		end
-		local horizontal = clampVector(Vector3.new(velocity.X, 0, velocity.Z), 48)
+		local velocity = fullVelocity:Lerp(
+			recentVelocity,
+			turnScore > 0.32 and 0.88 or 0.68
+		)
+		local horizontal = clampVector(
+			Vector3.new(velocity.X, 0, velocity.Z),
+			50
+		)
 		velocity = Vector3.new(
 			horizontal.X,
-			math.clamp(velocity.Y, -42, 42),
+			math.clamp(velocity.Y, -52, 52),
 			horizontal.Z
 		)
 
-		local acceleration = Vector3.new(0, 0, 0)
-		local timeSpan = filteredSegments[#filteredSegments].time
-			- filteredSegments[1].time
-		if #filteredSegments >= 4 and timeSpan >= 0.1 then
-			acceleration = clampVector(
-				(recentVelocity - olderVelocity) / math.max(timeSpan * 0.55, 0.06),
-				48
+		local acceleration = Vector3.zero
+		if count >= 5 and span >= 0.16 then
+			local centerDistance = math.max(span * 0.52, 0.08)
+			local rawAcceleration = (
+				recentVelocity - olderVelocity
+			) / centerDistance
+			local horizontalAcceleration = clampVector(
+				Vector3.new(rawAcceleration.X, 0, rawAcceleration.Z),
+				62
 			)
-			if acceleration.Magnitude < 2.5 then
-				acceleration = Vector3.new(0, 0, 0)
-			end
+			acceleration = Vector3.new(
+				horizontalAcceleration.X,
+				0,
+				horizontalAcceleration.Z
+			)
+			if acceleration.Magnitude < 2.2 then acceleration = Vector3.zero end
 		end
 
-		local sampleConfidence = math.clamp((#filteredSegments - 1) / 5, 0.18, 1)
-		local confidence = sampleConfidence
-			* (1 - jitterRatio * 0.62)
-			* (1 - turnScore * 0.68)
-			* (1 - brakeScore * 0.38)
+		local floorIsAir = false
+		pcall(function()
+			floorIsAir = humanoid.FloorMaterial == Enum.Material.Air
+		end)
+		local airborne = floorIsAir or math.abs(velocity.Y) > 2.4
+		local confidence = math.clamp((count - 1) / 7, 0.2, 1)
+			* math.clamp(span / 0.28, 0.3, 1)
+			* (1 - math.clamp(
+				residual / math.max(0.35, velocity.Magnitude * 0.055 + 0.18),
+				0,
+				0.78
+			))
+			* (1 - turnScore * 0.62)
+			* (1 - brakeScore * 0.34)
 		confidence = math.clamp(confidence, 0.12, 0.98)
 
 		local behavior = "stable"
-		if directionAgreement < -0.1 then
+		if track.teleportedAt and now - track.teleportedAt < 0.25 then
+			behavior = "teleport"
+			confidence = math.min(confidence, 0.14)
+		elseif directionAgreement < -0.05 then
 			behavior = "reversal"
 			confidence = math.min(confidence, 0.2)
-		elseif turnScore > 0.35 then
+		elseif turnScore > 0.34 then
 			behavior = "turning"
 		elseif brakeScore > 0.34 then
 			behavior = "braking"
-		elseif recentHorizontal.Magnitude < 0.9 then
+		elseif recentHorizontal.Magnitude < 0.85 and not airborne then
 			behavior = "stationary"
-			velocity = Vector3.new(0, math.abs(velocity.Y) > 2 and velocity.Y or 0, 0)
-			acceleration = Vector3.new(0, 0, 0)
-			confidence = math.max(confidence, 0.82)
+			velocity = Vector3.new(0, 0, 0)
+			acceleration = Vector3.zero
+			confidence = math.max(confidence, 0.86)
+		elseif airborne then
+			behavior = "airborne"
 		end
 
-		track.position = root.Position
-		track.velocity = velocity
-		track.acceleration = acceleration
-		track.confidence = confidence
-		track.behavior = behavior
-		track.turnScore = turnScore
-		track.brakeScore = brakeScore
-		track.time = now
-		return track
+		local receiveAges = {}
+		for index = math.max(1, count - 2), count do
+			local receiveAge = samples[index].receiveAge
+			if receiveAge then table.insert(receiveAges, receiveAge) end
+		end
+
+		local groundClearance
+		if airborne then
+			local params = RaycastParams.new()
+			params.FilterType = Enum.RaycastFilterType.Exclude
+			params.FilterDescendantsInstances = {track.character}
+			local hit = workspace:Raycast(
+				root.Position,
+				Vector3.new(0, -14, 0),
+				params
+			)
+			if hit then
+				groundClearance = math.max(0, root.Position.Y - hit.Position.Y - 2.65)
+			end
+		end
+
+		return {
+			velocity = velocity,
+			acceleration = acceleration,
+			confidence = confidence,
+			behavior = behavior,
+			turnScore = turnScore,
+			brakeScore = brakeScore,
+			airborne = airborne,
+			groundClearance = groundClearance,
+			observationAge = medianNumber(receiveAges),
+			residual = residual,
+		}
 	end
 
 	local lastPingSampleAt = 0
-	task.spawn(function()
-		while task.wait(0.06) do
-			for _, player in ipairs(game.Players:GetPlayers()) do
-				if player ~= localplayer then
-					samplePlayerMotion(player, false)
-				end
-			end
+	local motionAccumulator = 0
+	runtime.track(rs.PostSimulation:Connect(function(deltaTime)
+		if not runtime.alive then return end
+		motionAccumulator = motionAccumulator + deltaTime
+		if motionAccumulator < 0.05 then return end
+		motionAccumulator = motionAccumulator - 0.05
+		local now = os.clock()
 
-			local now = os.clock()
-			if now - lastPingSampleAt >= 0.25 then
-				lastPingSampleAt = now
-				local networkPing = 0
-				local dataPing = 0
-				pcall(function()
-					networkPing = localplayer:GetNetworkPing()
-				end)
-				pcall(function()
-					dataPing = statsService.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
-				end)
-				networkPing = math.clamp(networkPing, 0, 0.35)
-				dataPing = math.clamp(dataPing, 0, 0.6)
-				if dataPing <= 0 then dataPing = networkPing end
-				if smoothedNetworkPing == 0 then
-					smoothedNetworkPing = networkPing
-					smoothedDataPing = dataPing
-				else
-					local difference = math.abs(networkPing - smoothedNetworkPing)
-					networkPingJitter = networkPingJitter
-						+ (difference - networkPingJitter) * 0.18
-					smoothedNetworkPing = smoothedNetworkPing
-						+ (networkPing - smoothedNetworkPing)
-							* (difference > 0.08 and 0.35 or 0.16)
-					smoothedDataPing = smoothedDataPing
-						+ (dataPing - smoothedDataPing)
-							* (math.abs(dataPing - smoothedDataPing) > 0.1 and 0.3 or 0.12)
-				end
+		for _, player in ipairs(game.Players:GetPlayers()) do
+			if player ~= localplayer then
+				samplePlayerMotion(player, false, now)
 			end
 		end
-	end)
+
+		if now - lastPingSampleAt >= 0.25 then
+			lastPingSampleAt = now
+			local networkPing = 0
+			local dataPing = 0
+			pcall(function() networkPing = localplayer:GetNetworkPing() end)
+			pcall(function()
+				dataPing = statsService.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+			end)
+			networkPing = math.clamp(networkPing, 0, 0.35)
+			dataPing = math.clamp(dataPing, 0, 0.6)
+			if dataPing <= 0 then dataPing = networkPing end
+			if smoothedNetworkPing == 0 then
+				smoothedNetworkPing = networkPing
+				smoothedDataPing = dataPing
+			else
+				local difference = math.abs(networkPing - smoothedNetworkPing)
+				networkPingJitter = networkPingJitter
+					+ (difference - networkPingJitter) * 0.18
+				smoothedNetworkPing = smoothedNetworkPing
+					+ (networkPing - smoothedNetworkPing)
+						* (difference > 0.08 and 0.35 or 0.16)
+				smoothedDataPing = smoothedDataPing
+					+ (dataPing - smoothedDataPing)
+						* (math.abs(dataPing - smoothedDataPing) > 0.1 and 0.3 or 0.12)
+			end
+		end
+	end))
 
 	local function getEffectivePing()
 		local networkPing = smoothedNetworkPing > 0 and smoothedNetworkPing or 0.08
 		local dataPing = smoothedDataPing > 0 and smoothedDataPing or networkPing
-		return math.clamp(networkPing * 0.38 + dataPing * 0.62, 0.02, 0.45)
+		return math.clamp(networkPing * 0.62 + dataPing * 0.38, 0.02, 0.45)
 	end
 
 	local function getTargetState(player)
@@ -6357,20 +6696,17 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		if not root or not humanoid or humanoid.Health <= 0 then return nil end
-		local sample = samplePlayerMotion(player, true)
-		if not sample then return nil end
-		return {
-			character = character,
-			root = root,
-			rootPosition = root.Position,
-			velocity = sample.velocity,
-			acceleration = sample.acceleration,
-			confidence = sample.confidence,
-			behavior = sample.behavior,
-			turnScore = sample.turnScore,
-			brakeScore = sample.brakeScore,
-			sampleTime = sample.time,
-		}
+		local now = os.clock()
+		local track = samplePlayerMotion(player, true, now)
+		if not track then return nil end
+		local estimate = estimateMotion(track, root, humanoid, now)
+		if not estimate then return nil end
+		estimate.character = character
+		estimate.root = root
+		estimate.rootPosition = root.Position
+		estimate.sampleTime = now
+		estimate.track = track
+		return estimate
 	end
 
 	local function getMotionFactor(state)
@@ -6381,8 +6717,84 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			factor = math.min(factor, 0.46)
 		elseif state.behavior == "braking" then
 			factor = math.min(factor, 0.62)
+		elseif state.behavior == "teleport" then
+			factor = math.min(factor, 0.1)
 		end
 		return math.clamp(factor, 0.12, 1)
+	end
+
+	local function getRouteStat(route)
+		local stat = aimData.routeStats[route]
+		if type(stat) ~= "table" then
+			stat = {rtt = 0, samples = 0, successes = 0}
+			aimData.routeStats[route] = stat
+		end
+		stat.rtt = math.clamp(tonumber(stat.rtt) or 0, 0, 0.8)
+		stat.samples = math.clamp(tonumber(stat.samples) or 0, 0, 200)
+		stat.successes = math.clamp(tonumber(stat.successes) or 0, 0, 200)
+		return stat
+	end
+
+	local function getLatencyState(route, state)
+		local networkRtt = smoothedNetworkPing > 0 and smoothedNetworkPing or 0.08
+		local dataRtt = smoothedDataPing > 0 and smoothedDataPing or networkRtt
+		local reliableQueue = math.max(0, dataRtt - networkRtt)
+		local commandDelay = networkRtt * 0.5 + reliableQueue * 0.3
+		local routeStat = getRouteStat(route or "unknown")
+		if routeStat.samples >= 2 and routeStat.rtt > 0 then
+			commandDelay = commandDelay * 0.7
+				+ math.clamp(routeStat.rtt * 0.5, 0.01, 0.22) * 0.3
+		end
+
+		local receiveAge = state and state.observationAge
+		local observationDelay = reliableQueue * 0.2
+		if receiveAge then
+			observationDelay = observationDelay
+				+ math.clamp(receiveAge, 0, 0.16) * 0.58
+		else
+			observationDelay = observationDelay + dataRtt * 0.08
+		end
+
+		return {
+			networkRtt = networkRtt,
+			dataRtt = dataRtt,
+			commandDelay = math.clamp(commandDelay, 0.012, 0.22),
+			observationDelay = math.clamp(observationDelay, 0, 0.095),
+			jitterBuffer = math.min(networkPingJitter, 0.055) * 0.14,
+		}
+	end
+
+	local function predictTargetDisplacement(state, horizon)
+		local factor = getMotionFactor(state)
+		local horizontalVelocity = Vector3.new(
+			state.velocity.X,
+			0,
+			state.velocity.Z
+		)
+		local horizontalAcceleration = state.acceleration
+		local accelerationWindow = math.min(horizon, 0.18)
+		local horizontalDisplacement = horizontalVelocity * (horizon * factor)
+			+ horizontalAcceleration
+				* (0.5 * accelerationWindow * accelerationWindow
+					* state.confidence * factor)
+
+		local verticalDisplacement = 0
+		if state.airborne then
+			local verticalConfidence = 0.52 + state.confidence * 0.48
+			verticalDisplacement = state.velocity.Y * horizon * verticalConfidence
+				- 0.5 * workspace.Gravity * horizon * horizon
+			if state.groundClearance
+				and verticalDisplacement < -state.groundClearance then
+				verticalDisplacement = -state.groundClearance
+			end
+		elseif math.abs(state.velocity.Y) > 1.4 then
+			verticalDisplacement = state.velocity.Y
+				* math.min(horizon, 0.08) * state.confidence
+		end
+
+		return horizontalDisplacement
+			+ Vector3.new(0, verticalDisplacement, 0),
+			factor
 	end
 
 	local function classifyRadialMotion(origin, targetPosition, velocity)
@@ -6397,13 +6809,20 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return "lateral", radialSpeed
 	end
 
+	local bodyPointDefinitions
 	local function isTrajectoryClear(character, origin, targetPosition, radius)
 		if not character or not targetPosition then return false end
 		local direction = targetPosition - origin
 		if direction.Magnitude < 0.01 then return true end
 		local params = RaycastParams.new()
 		params.FilterType = Enum.RaycastFilterType.Exclude
-		params.FilterDescendantsInstances = {localplayer.Character}
+		local excluded = {localplayer.Character}
+		for _, child in ipairs(character:GetChildren()) do
+			if child:IsA("Accessory") or child:IsA("Tool") then
+				table.insert(excluded, child)
+			end
+		end
+		params.FilterDescendantsInstances = excluded
 		local hit
 		if radius and radius > 0 then
 			local ok = pcall(function()
@@ -6413,10 +6832,18 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		else
 			hit = workspace:Raycast(origin, direction, params)
 		end
-		return not hit or hit.Instance:IsDescendantOf(character)
+		if not hit then return true end
+		if not hit.Instance:IsDescendantOf(character)
+			or not hit.Instance:IsA("BasePart") then
+			return false
+		end
+		for _, definition in ipairs(bodyPointDefinitions or {}) do
+			if hit.Instance.Name == definition.name then return true end
+		end
+		return false
 	end
 
-	local bodyPointDefinitions = {
+	bodyPointDefinitions = {
 		{name = "UpperTorso", priority = 5.4, radius = 0.78},
 		{name = "Torso", priority = 5.35, radius = 0.82},
 		{name = "LowerTorso", priority = 5.05, radius = 0.74},
@@ -6429,38 +6856,47 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		local bestScore = -math.huge
 		for _, definition in ipairs(bodyPointDefinitions) do
 			local part = character:FindFirstChild(definition.name)
-			if part and part:IsA("BasePart")
-				and isTrajectoryClear(character, origin, part.Position) then
-				local predicted = part.Position + displacement
-				local selected
-				local leadFraction = 0
-				for _, fraction in ipairs({1, 0.78, 0.55, 0.32, 0}) do
-					local point = part.Position:Lerp(predicted, fraction)
-					if isTrajectoryClear(character, origin, point) then
-						selected = point
-						leadFraction = fraction
-						break
-					end
-				end
-				if selected then
-					local clearance = 0
-					if isTrajectoryClear(character, origin, selected, 0.14) then
-						clearance = clearance + 1
-					end
-					if isTrajectoryClear(character, origin, selected, 0.28) then
-						clearance = clearance + 1
-					end
-					local score = definition.priority + clearance * 0.85
-						+ leadFraction * 1.1
-					if score > bestScore then
-						bestScore = score
-						best = {
-							position = selected,
-							currentPosition = part.Position,
-							partName = definition.name,
-							radius = definition.radius,
-							leadFraction = leadFraction,
-						}
+			if part and part:IsA("BasePart") and part.CanQuery then
+				local offsets = {
+					Vector3.zero,
+					part.CFrame.UpVector * math.min(part.Size.Y * 0.18, 0.3),
+					-part.CFrame.UpVector * math.min(part.Size.Y * 0.16, 0.26),
+					part.CFrame.RightVector * math.min(part.Size.X * 0.16, 0.24),
+					-part.CFrame.RightVector * math.min(part.Size.X * 0.16, 0.24),
+				}
+				for offsetIndex, offset in ipairs(offsets) do
+					local currentPoint = part.Position + offset
+					local predicted = currentPoint + displacement
+					for _, fraction in ipairs({1, 0.76, 0.48, 0}) do
+						local point = currentPoint:Lerp(predicted, fraction)
+						if isTrajectoryClear(character, origin, point) then
+							local clearance = 0
+							if isTrajectoryClear(character, origin, point, 0.12) then
+								clearance = clearance + 1
+							end
+							if isTrajectoryClear(character, origin, point, 0.24) then
+								clearance = clearance + 1
+							end
+							local centerBonus = offsetIndex == 1 and 0.55 or 0
+							local score = definition.priority
+								+ clearance * 0.72
+								+ fraction * 1.35
+								+ centerBonus
+							if score > bestScore then
+								bestScore = score
+								best = {
+									position = point,
+									currentPosition = currentPoint,
+									partName = definition.name,
+									radius = math.min(
+										definition.radius,
+										math.min(part.Size.X, part.Size.Y) * 0.45
+									),
+									leadFraction = fraction,
+								}
+							end
+							break
+						end
 					end
 				end
 			end
@@ -6470,6 +6906,15 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 	local function getGunRouteCandidates(gun)
 		local candidates = {}
+		local shootRemote = gun and gun:FindFirstChild("Shoot")
+		if shootRemote and shootRemote:IsA("RemoteEvent") then
+			table.insert(candidates, {
+				name = "Shoot",
+				kind = "event",
+				remote = shootRemote,
+			})
+		end
+
 		local knifeLocal = gun and gun:FindFirstChild("KnifeLocal")
 		local createBeam = knifeLocal and knifeLocal:FindFirstChild("CreateBeam")
 		local remoteFunction = createBeam and createBeam:FindFirstChild("RemoteFunction")
@@ -6491,14 +6936,6 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			})
 		end
 
-		local shootRemote = gun and gun:FindFirstChild("Shoot")
-		if shootRemote and shootRemote:IsA("RemoteEvent") then
-			table.insert(candidates, {
-				name = "Shoot",
-				kind = "event",
-				remote = shootRemote,
-			})
-		end
 		return candidates
 	end
 
@@ -6507,76 +6944,57 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return candidates[1] and candidates[1].name or "unknown"
 	end
 
-	local function getDistanceBucket(distance)
-		if distance < 30 then return "near" end
-		if distance < 72 then return "mid" end
-		return "far"
-	end
+	local function getAimOriginForRoute(origin, route, commandDelay)
+		if route == "Shoot" then return origin, false end
+		local character = localplayer.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if not root or not humanoid then return origin, false end
 
-	local function getPingBucket(ping)
-		if ping < 0.075 then return "low" end
-		if ping < 0.15 then return "mid" end
-		return "high"
+		local velocity = Vector3.zero
+		pcall(function() velocity = root.AssemblyLinearVelocity end)
+		velocity = clampVector(velocity, 58)
+		local horizon = math.min(commandDelay, 0.16)
+		local displacement = velocity * horizon
+		local airborne = false
+		pcall(function()
+			airborne = humanoid.FloorMaterial == Enum.Material.Air
+		end)
+		if airborne then
+			displacement = displacement
+				- Vector3.new(0, 0.5 * workspace.Gravity * horizon * horizon, 0)
+			local params = RaycastParams.new()
+			params.FilterType = Enum.RaycastFilterType.Exclude
+			params.FilterDescendantsInstances = {character}
+			local ground = workspace:Raycast(
+				root.Position,
+				Vector3.new(0, -12, 0),
+				params
+			)
+			if ground then
+				local clearance = math.max(
+					0,
+					root.Position.Y - ground.Position.Y - 2.65
+				)
+				if displacement.Y < -clearance then
+					displacement = Vector3.new(
+						displacement.X,
+						-clearance,
+						displacement.Z
+					)
+				end
+			end
+		else
+			displacement = Vector3.new(displacement.X, 0, displacement.Z)
+		end
+		return origin + clampVector(displacement, 4.5), airborne
 	end
-
-	local function getSpeedBucket(speed)
-		if speed < 5 then return "slow" end
-		if speed < 14 then return "normal" end
-		return "fast"
-	end
-
-	local function makeGunBucketKey(context, distance, ping, speed, route)
-		return table.concat({
-			"bucket",
-			context,
-			getDistanceBucket(distance),
-			getPingBucket(ping),
-			getSpeedBucket(speed),
-			route or "unknown",
-		}, ":")
-	end
-
-	local function getLearnedGunCorrection(context, bucketKey)
-		local contextProfile = ensureGunProfile("context:" .. context)
-		local bucketProfile = ensureGunProfile(bucketKey)
-		local bucketWeight = math.clamp(bucketProfile.samples / 8, 0, 0.78)
-		return contextProfile.correction * (1 - bucketWeight)
-			+ bucketProfile.correction * bucketWeight
-	end
-
-	local gunLeadScale = {
-		approaching = 0.56,
-		lateral = 0.58,
-		receding = 0.56,
-	}
 
 	local function getGunPredictedPosition(player, origin, movementPrediction, gun)
 		local state = getTargetState(player)
 		if not state then return nil end
-		local relative = state.rootPosition - origin
-		if relative.Magnitude < 0.01 then return state.rootPosition end
-
-		local context, radialSpeed = classifyRadialMotion(
-			origin,
-			state.rootPosition,
-			state.velocity
-		)
-		local radialDirection = relative.Unit
-		local tangentialVelocity = state.velocity
-			- radialDirection * state.velocity:Dot(radialDirection)
-		local tangentialAcceleration = state.acceleration
-			- radialDirection * state.acceleration:Dot(radialDirection)
-		local tangentialSpeed = tangentialVelocity.Magnitude
-		local ping = getEffectivePing()
 		local route = getPreferredGunRouteName(gun)
-		local bucketKey = makeGunBucketKey(
-			context,
-			relative.Magnitude,
-			ping,
-			tangentialSpeed,
-			route
-		)
-		local learnedCorrection = getLearnedGunCorrection(context, bucketKey)
+		local latency = getLatencyState(route, state)
 		local pingScale = math.clamp(tonumber(offsetToPingMult) or 1, 0, 3)
 		local manualLead = math.clamp(
 			tonumber(movementPrediction) or 2.8,
@@ -6584,33 +7002,47 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			5
 		) * 0.003
 		local leadTime = math.clamp(
-			ping * (gunLeadScale[context] or 0.58) * pingScale
-				+ manualLead
-				+ learnedCorrection
-				+ math.min(networkPingJitter, 0.055) * 0.16,
-			0.016,
-			0.2
-		)
-		local traceDelay = math.clamp(
-			ping * 0.5 * pingScale
-				+ math.min(networkPingJitter, 0.055) * 0.1
-				+ 0.003,
+			(latency.commandDelay + latency.observationDelay) * pingScale
+				+ latency.jitterBuffer
+				+ manualLead,
 			0.014,
-			0.2
+			0.23
+		)
+		local aimOrigin, shooterAirborne = getAimOriginForRoute(
+			origin,
+			route,
+			latency.commandDelay * pingScale
+		)
+		local relative = state.rootPosition - aimOrigin
+		if relative.Magnitude < 0.01 then return state.rootPosition end
+
+		local context, radialSpeed = classifyRadialMotion(
+			aimOrigin,
+			state.rootPosition,
+			state.velocity
+		)
+		local radialDirection = relative.Unit
+		local tangentialVelocity = state.velocity
+			- radialDirection * state.velocity:Dot(radialDirection)
+		local tangentialSpeed = tangentialVelocity.Magnitude
+		local traceDelay = math.clamp(
+			latency.commandDelay * pingScale,
+			0.012,
+			0.22
 		)
 
 		-- En un raycast, acercarse o alejarse por la misma línea no exige
 		-- adelantar el ángulo. Separar la componente tangencial evita que el
 		-- comportamiento cambie artificialmente al disparar de frente o detrás.
-		local motionFactor = getMotionFactor(state)
-		local accelerationWindow = math.min(leadTime, 0.16)
-		local displacement = tangentialVelocity * (leadTime * motionFactor)
-			+ tangentialAcceleration
-				* (0.5 * accelerationWindow * accelerationWindow
-					* state.confidence * motionFactor)
+		local fullDisplacement, motionFactor = predictTargetDisplacement(
+			state,
+			leadTime
+		)
+		local displacement = fullDisplacement
+			- radialDirection * fullDisplacement:Dot(radialDirection)
 		local bodyPoint = chooseVisibleBodyPoint(
 			state.character,
-			origin,
+			aimOrigin,
 			displacement
 		)
 		if not bodyPoint then return nil end
@@ -6618,11 +7050,12 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return bodyPoint.position, {
 			weapon = "gun",
 			context = context,
-			bucketKey = bucketKey,
 			routeHint = route,
 			leadTime = leadTime,
 			traceDelay = traceDelay,
-			ping = ping,
+			ping = getEffectivePing(),
+			commandDelay = latency.commandDelay,
+			observationDelay = latency.observationDelay,
 			distance = relative.Magnitude,
 			radialSpeed = radialSpeed,
 			tangentialSpeed = tangentialSpeed,
@@ -6636,6 +7069,10 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			rootPosition = state.rootPosition,
 			baseAimPosition = bodyPoint.currentPosition,
 			predictedPosition = bodyPoint.position,
+			aimOrigin = aimOrigin,
+			shooterAirborne = shooterAirborne,
+			targetAirborne = state.airborne,
+			receiveAge = state.observationAge,
 			targetPartName = bodyPoint.partName,
 			targetRadius = bodyPoint.radius,
 			leadFraction = bodyPoint.leadFraction,
@@ -6675,7 +7112,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		-- ligera mantiene el coste bajo en iPhone sin renunciar al torso.
 		for _, definition in ipairs(bodyPointDefinitions) do
 			local part = character:FindFirstChild(definition.name)
-			if part and part:IsA("BasePart")
+			if part and part:IsA("BasePart") and part.CanQuery
 				and isTrajectoryClear(character, origin, part.Position, 0.16) then
 				return {
 					position = part.Position,
@@ -6697,17 +7134,18 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 		local projectileSpeed = math.clamp(measuredKnifeSpeed, 70, 280)
 		local pingScale = math.clamp(tonumber(offsetToPingMult) or 1, 0, 3)
+		local latency = getLatencyState("KnifeThrown", state)
 		local manualLead = math.clamp(
 			tonumber(movementPrediction) or 2.8,
 			0,
 			5
 		) * 0.0025
 		local networkLead = math.clamp(
-			getEffectivePing() * 0.58 * pingScale
+			(latency.commandDelay + latency.observationDelay) * pingScale
 				+ manualLead
-				+ math.min(networkPingJitter, 0.055) * 0.12,
+				+ latency.jitterBuffer,
 			0.012,
-			0.23
+			0.28
 		)
 		local motionFactor = getMotionFactor(state)
 		local reliableVelocity = state.velocity * motionFactor
@@ -6721,22 +7159,21 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		local totalTime = networkLead + travelTime
 		local predictedPosition
 
-		for _ = 1, 3 do
-			local accelerationWindow = math.min(totalTime, 0.24)
-			predictedPosition = bodyPoint.currentPosition
-				+ reliableVelocity * totalTime
-				+ state.acceleration
-					* (0.5 * accelerationWindow * accelerationWindow
-						* state.confidence * motionFactor)
-			if (tonumber(aimData.knifePhysics.gravityMeasurements) or 0) >= 4
-				and #aimData.knifePhysics.recentGravities >= 4
+		for _ = 1, 5 do
+			local targetDisplacement = predictTargetDisplacement(state, totalTime)
+			predictedPosition = bodyPoint.currentPosition + targetDisplacement
+			local physicsModel = aimData.knifePhysics.model
+			local modelConfidence = tonumber(
+				aimData.knifePhysics.modelConfidence
+			) or 0
+			if physicsModel == "ballistic"
+				and modelConfidence >= 0.62
 				and measuredKnifeGravity >= 15 then
-				predictedPosition = predictedPosition
-					+ Vector3.new(
-						0,
-						0.5 * measuredKnifeGravity * travelTime * travelTime,
-						0
-					)
+				predictedPosition = predictedPosition + Vector3.new(
+					0,
+					0.5 * measuredKnifeGravity * travelTime * travelTime,
+					0
+				)
 			end
 			travelTime = math.clamp(
 				(predictedPosition - origin).Magnitude / projectileSpeed,
@@ -6757,6 +7194,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			leadTime = totalTime,
 			travelTime = travelTime,
 			ping = getEffectivePing(),
+			commandDelay = latency.commandDelay,
+			observationDelay = latency.observationDelay,
 			distance = (bodyPoint.currentPosition - origin).Magnitude,
 			radialSpeed = radialSpeed,
 			confidence = state.confidence,
@@ -6764,9 +7203,12 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			motionFactor = motionFactor,
 			projectileSpeed = projectileSpeed,
 			projectileGravity = measuredKnifeGravity,
+			projectileModel = aimData.knifePhysics.model,
 			rootPosition = state.rootPosition,
 			baseAimPosition = bodyPoint.currentPosition,
 			predictedPosition = predictedPosition,
+			targetAirborne = state.airborne,
+			receiveAge = state.observationAge,
 			targetPartName = bodyPoint.partName,
 			targetRadius = bodyPoint.radius,
 		}
@@ -6780,8 +7222,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		expectedDirection = expectedDirection.Magnitude > 0.01
 			and expectedDirection.Unit or nil
 
-		connection = workspace.DescendantAdded:Connect(function(object)
-			if finished then return end
+		connection = runtime.track(workspace.DescendantAdded:Connect(function(object)
+			if finished or not runtime.alive then return end
 			local projectile = object
 			while projectile and projectile ~= workspace
 				and projectile.Name ~= "ThrowingKnife" do
@@ -6799,7 +7241,10 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 						or projectile:FindFirstChildWhichIsA("BasePart", true)
 					if not part then task.wait() end
 				until part or os.clock() >= deadline or not projectile.Parent
-				if finished or not part or not projectile.Parent then return end
+					or not runtime.alive
+				if finished or not runtime.alive or not part or not projectile.Parent then
+					return
+				end
 
 				local function getPosition()
 					if projectile:IsA("Model") then
@@ -6817,7 +7262,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				local velocityTimes = {}
 				for _ = 1, 10 do
 					rs.Heartbeat:Wait()
-					if not projectile.Parent then break end
+					if not runtime.alive or not projectile.Parent then break end
 					local position = getPosition()
 					local now = os.clock()
 					local elapsed = now - previousTime
@@ -6896,10 +7341,15 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 					end
 					local gravity = medianAcceleration and -medianAcceleration or 0
 					local dispersion = medianNumber(deviations) or math.huge
-					if gravity >= 15
+					local ballisticEvidence = gravity >= 15
 						and gravity <= 240
 						and negativeCount / #verticalAccelerations >= 0.7
-						and dispersion <= math.max(28, gravity * 0.45) then
+						and dispersion <= math.max(28, gravity * 0.45)
+					if ballisticEvidence then
+						aimData.knifePhysics.ballisticVotes = math.min(
+							20,
+							(tonumber(aimData.knifePhysics.ballisticVotes) or 0) + 1
+						)
 						local recentGravities = aimData.knifePhysics.recentGravities
 						table.insert(recentGravities, gravity)
 						while #recentGravities > 8 do
@@ -6918,13 +7368,37 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 						)
 						aimData.knifePhysics.gravity = measuredKnifeGravity
 						aimData.knifePhysics.gravityMeasurements = gravityMeasurements + 1
+					elseif math.abs(medianAcceleration or 0) <= 32
+						or dispersion > 65 then
+						aimData.knifePhysics.linearVotes = math.min(
+							20,
+							(tonumber(aimData.knifePhysics.linearVotes) or 0) + 1
+						)
+					end
+					local ballisticVotes = tonumber(
+						aimData.knifePhysics.ballisticVotes
+					) or 0
+					local linearVotes = tonumber(
+						aimData.knifePhysics.linearVotes
+					) or 0
+					local totalVotes = ballisticVotes + linearVotes
+					if totalVotes >= 3 then
+						aimData.knifePhysics.model = ballisticVotes > linearVotes
+							and "ballistic" or "linear"
+						aimData.knifePhysics.modelConfidence = math.clamp(
+							math.abs(ballisticVotes - linearVotes)
+								/ math.max(totalVotes, 1) + totalVotes * 0.055,
+							0,
+							1
+						)
 					end
 				end
 				scheduleAimDataSave()
 			end)
-		end)
+		end))
 
 		task.delay(1, function()
+			if not runtime.alive then return end
 			finished = true
 			if connection then connection:Disconnect() end
 		end)
@@ -6968,49 +7442,24 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return bestTarget, bestPosition, bestMetadata
 	end
 
-	local function updateGunProfileFromTrace(metadata, route, errorSeconds, geometricHit)
-		if metadata.wallAdjusted or metadata.skipLearning then return end
-		if metadata.confidence < 0.68 or metadata.tangentialSpeed < 4 then return end
-		if metadata.behavior ~= "stable" then return end
-		local routeBucket = makeGunBucketKey(
-			metadata.context,
-			metadata.distance,
-			metadata.ping,
-			metadata.tangentialSpeed,
-			route
-		)
-		local contextProfile = ensureGunProfile("context:" .. metadata.context)
-		local bucketProfile = ensureGunProfile(routeBucket)
-		local weight = math.clamp(metadata.confidence, 0.35, 1)
-		local residual = math.clamp(errorSeconds, -0.04, 0.04)
-
-		contextProfile.correction = math.clamp(
-			contextProfile.correction + residual * 0.035 * weight,
-			-0.055,
-			0.055
-		)
-		contextProfile.samples = math.min(200, contextProfile.samples + weight * 0.35)
-		if geometricHit then
-			contextProfile.geometricHits = math.min(
-				200,
-				contextProfile.geometricHits + weight * 0.35
-			)
+	local function getTrackPositionAt(track, desiredTime)
+		local samples = track and track.samples
+		if not samples or #samples == 0 then return nil end
+		if desiredTime <= samples[1].time then return samples[1].position end
+		for index = 2, #samples do
+			local newer = samples[index]
+			if desiredTime <= newer.time then
+				local older = samples[index - 1]
+				local span = math.max(newer.time - older.time, 0.001)
+				local alpha = math.clamp(
+					(desiredTime - older.time) / span,
+					0,
+					1
+				)
+				return older.position:Lerp(newer.position, alpha)
+			end
 		end
-		contextProfile.decayedAt = os.time()
-
-		bucketProfile.correction = math.clamp(
-			bucketProfile.correction + residual * 0.095 * weight,
-			-0.055,
-			0.055
-		)
-		bucketProfile.samples = math.min(200, bucketProfile.samples + weight)
-		if geometricHit then
-			bucketProfile.geometricHits = math.min(
-				200,
-				bucketProfile.geometricHits + weight
-			)
-		end
-		bucketProfile.decayedAt = os.time()
+		return samples[#samples].position
 	end
 
 	local function registerShotOutcome(target, metadata, route, receipt)
@@ -7021,73 +7470,40 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		local traceResult = {}
 
 		if metadata.weapon == "gun" then
-			-- La traza se observa en la llegada estimada al servidor, no en el
-			-- adelanto elegido. Así el aprendizaje no se confirma a sí mismo.
 			local traceDelay = math.clamp(
 				metadata.traceDelay or 0.055,
 				0.02,
 				0.22
 			)
-			task.delay(traceDelay, function()
-				if not target or target.Character ~= character then return end
-				local root = character:FindFirstChild("HumanoidRootPart")
-				local targetPart = character:FindFirstChild(metadata.targetPartName or "")
-				if not root or not targetPart or not targetPart:IsA("BasePart") then return end
-
-				local actualDelta = root.Position - metadata.rootPosition
-				local initialHorizontal = Vector3.new(
-					metadata.velocity.X,
-					0,
-					metadata.velocity.Z
+			local sentAt = receipt and receipt.sentAt or os.clock()
+			local desiredTime = sentAt + traceDelay
+			task.delay(math.max(0, desiredTime - os.clock()) + 0.055, function()
+				if not runtime.alive or not target
+					or target.Character ~= character then return end
+				local rootAtArrival = getTrackPositionAt(
+					predictionTracks[target],
+					desiredTime
 				)
-				local actualHorizontal = Vector3.new(
-					actualDelta.X,
-					0,
-					actualDelta.Z
-				)
-				local actualSpeed = actualHorizontal.Magnitude / math.max(traceDelay, 0.025)
-				local stableMotion = true
-				if initialHorizontal.Magnitude > 3 and actualHorizontal.Magnitude > 0.15 then
-					stableMotion = initialHorizontal.Unit:Dot(actualHorizontal.Unit) >= 0.72
-						and actualSpeed >= initialHorizontal.Magnitude * 0.42
-						and actualSpeed <= initialHorizontal.Magnitude * 1.85
-				elseif initialHorizontal.Magnitude > 3 then
-					stableMotion = false
-				end
-
-				local shotVector = metadata.predictedPosition - metadata.origin
+				if not rootAtArrival then return end
+				local actualPartPosition = metadata.baseAimPosition
+					+ (rootAtArrival - metadata.rootPosition)
+				local rayOrigin = metadata.aimOrigin or metadata.origin
+				local shotVector = metadata.predictedPosition - rayOrigin
 				if shotVector.Magnitude < 0.01 then return end
 				local shotDirection = shotVector.Unit
 				local alongRay = math.max(
 					0,
-					(targetPart.Position - metadata.origin):Dot(shotDirection)
+					(actualPartPosition - rayOrigin):Dot(shotDirection)
 				)
-				local closestPoint = metadata.origin + shotDirection * alongRay
-				local missVector = targetPart.Position - closestPoint
+				local closestPoint = rayOrigin + shotDirection * alongRay
+				local missVector = actualPartPosition - closestPoint
 				local missDistance = missVector.Magnitude
 				local geometricHit = missDistance
 					<= (metadata.targetRadius or 0.7) + 0.18
 				traceResult.miss = missDistance
 				traceResult.geometricHit = geometricHit
-				traceResult.stable = stableMotion
-
-				if stableMotion
-					and metadata.tangentialVelocity
-					and metadata.tangentialVelocity.Magnitude >= 4
-					and (not receipt or receipt.accepted ~= false) then
-					local signedMiss = missVector:Dot(
-						metadata.tangentialVelocity.Unit
-					)
-					local errorSeconds = signedMiss
-						/ metadata.tangentialVelocity.Magnitude
-					traceResult.errorSeconds = errorSeconds
-					updateGunProfileFromTrace(
-						metadata,
-						route,
-						errorSeconds,
-						geometricHit
-					)
-				end
+				-- V5 no modifica su adelanto usando esta geometría local: no es
+				-- una confirmación del servidor y hacerlo en V4 podía sobreajustar.
 			end)
 		end
 
@@ -7095,6 +7511,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			and math.clamp((metadata.travelTime or 0) + 0.65, 0.8, 2.35)
 			or 1.05
 		task.delay(outcomeDelay, function()
+			if not runtime.alive then return end
 			local hit = humanoid.Health <= 0 or humanoid.Parent == nil
 			table.insert(aimData.recentShots, {
 				weapon = metadata.weapon,
@@ -7109,6 +7526,10 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				radial = math.floor((metadata.radialSpeed or 0) * 10 + 0.5) / 10,
 				confidence = math.floor((metadata.confidence or 0) * 100 + 0.5),
 				behavior = metadata.behavior,
+				shooterAirborne = metadata.shooterAirborne or false,
+				targetAirborne = metadata.targetAirborne or false,
+				receiveAge = metadata.receiveAge
+					and math.floor(metadata.receiveAge * 1000 + 0.5) or nil,
 				targetPart = metadata.targetPartName,
 				wallAdjusted = metadata.wallAdjusted or false,
 				geometricHit = traceResult.geometricHit,
@@ -7127,26 +7548,51 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local function fireGunAtPosition(gun, origin, predictedPosition)
 		for _, candidate in ipairs(getGunRouteCandidates(gun)) do
 			if candidate.kind == "function" then
+				local sentAt = os.clock()
 				local ok, result = pcall(function()
 					return candidate.remote:InvokeServer(1, predictedPosition, "AH2")
 				end)
+				local completedAt = os.clock()
 				if ok and result ~= false then
+					local stat = getRouteStat(candidate.name)
+					local rtt = math.clamp(completedAt - sentAt, 0, 0.8)
+					stat.rtt = stat.samples == 0 and rtt
+						or stat.rtt + (rtt - stat.rtt) * 0.22
+					stat.samples = math.min(200, stat.samples + 1)
+					stat.successes = math.min(200, stat.successes + 1)
+					scheduleAimDataSave()
 					return true, candidate.name, {
 						accepted = true,
 						confirmed = result ~= nil,
+						sentAt = sentAt,
+						completedAt = completedAt,
+						rtt = rtt,
 					}
 				end
 			elseif candidate.kind == "legacy" then
+				local sentAt = os.clock()
 				local ok, result = pcall(function()
 					return candidate.remote:InvokeServer(0, predictedPosition, "AH")
 				end)
+				local completedAt = os.clock()
 				if ok and result ~= false then
+					local stat = getRouteStat(candidate.name)
+					local rtt = math.clamp(completedAt - sentAt, 0, 0.8)
+					stat.rtt = stat.samples == 0 and rtt
+						or stat.rtt + (rtt - stat.rtt) * 0.22
+					stat.samples = math.min(200, stat.samples + 1)
+					stat.successes = math.min(200, stat.successes + 1)
+					scheduleAimDataSave()
 					return true, candidate.name, {
 						accepted = true,
 						confirmed = result ~= nil,
+						sentAt = sentAt,
+						completedAt = completedAt,
+						rtt = rtt,
 					}
 				end
 			elseif candidate.kind == "event" then
+				local sentAt = os.clock()
 				local ok = pcall(function()
 					candidate.remote:FireServer(
 						CFrame.new(origin),
@@ -7157,6 +7603,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 					return true, candidate.name, {
 						accepted = true,
 						confirmed = false,
+						sentAt = sentAt,
+						completedAt = os.clock(),
 					}
 				end
 			end
@@ -7166,13 +7614,15 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 	local lastGunShotAt = 0
 	local lastKnifeShotAt = 0
+	local gunShotInFlight = false
 
 	task.spawn(function()
-		while task.wait(1) do
+		while runtime.alive and task.wait(1) do
 			if findSheriff() == localplayer and autoShooting then
 				fu.notification("Disparo automático iniciado.")
 				repeat
 					task.wait(0.1)
+					if not runtime.alive then break end
 					local murderer = findMurderer()
 					if not murderer then fu.notification("No se ha encontrado al asesino.") continue end
 					local murdererCharacter = murderer.Character
@@ -7192,11 +7642,13 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 						end
 					end
 
-					if os.clock() - lastGunShotAt < 1.05 then continue end
+					if gunShotInFlight
+						or os.clock() - lastGunShotAt < 1.05 then continue end
 					local equippedGun = localCharacter:FindFirstChild("Gun")
 						or localCharacter:WaitForChild("Gun", 0.5)
-					local originPart = equippedGun and equippedGun:FindFirstChild("Handle")
-						or localCharacter:FindFirstChild("RightHand")
+					local originPart = localCharacter:FindFirstChild("RightHand")
+						or localCharacter:FindFirstChild("Right Arm")
+						or equippedGun and equippedGun:FindFirstChild("Handle")
 						or characterRootPart
 					if equippedGun and originPart then
 						local predictedPosition, metadata = getGunPredictedPosition(
@@ -7207,13 +7659,15 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 						)
 						if predictedPosition and metadata then
 							metadata.origin = originPart.Position
+							gunShotInFlight = true
 							local fired, route, receipt = fireGunAtPosition(
 								equippedGun,
 								originPart.Position,
 								predictedPosition
 							)
+							gunShotInFlight = false
 							if fired then
-								lastGunShotAt = os.clock()
+								lastGunShotAt = receipt and receipt.sentAt or os.clock()
 								registerShotOutcome(
 									murderer,
 									metadata,
@@ -7223,11 +7677,13 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 							end
 						end
 					end
-				until findSheriff() ~= localplayer or not autoShooting
+				until not runtime.alive
+					or findSheriff() ~= localplayer
+					or not autoShooting
 			end
 		end
 	end)
-
+	
 	table.insert(module, {
 		Type = "Text",
 		Args = {"VISIÓN DE PARTIDA"}
@@ -7267,7 +7723,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			fu.notification("Todos los ESP están preparados para la próxima ronda.")
 		end
 	end)
-	
+
 	table.insert(module, {
 		Type = "Toggle",
 		Args = {"Ocultar mi propio ESP", function(Self, state)
@@ -7282,17 +7738,18 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 	local instakillshoot = false
 	local function shootMurderer()
+			if not runtime.alive then return end
 			if findSheriff() ~= localplayer then
 				fu.notification("No eres sheriff ni héroe.")
 				return
 			end
-
+	
 			local murderer = findMurderer()
 			if not murderer then
 				fu.notification("No se ha encontrado al asesino.")
 				return
 			end
-
+	
 			if not localplayer.Character:FindFirstChild("Gun") then
 				local hum = localplayer.Character:FindFirstChild("Humanoid")
 				if localplayer.Backpack:FindFirstChild("Gun") then
@@ -7302,28 +7759,29 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 					return
 				end
 			end
-
+	
 			local murdererCharacter = murderer.Character
 			local murdererHRP = murdererCharacter and murdererCharacter:FindFirstChild("HumanoidRootPart")
 			if not murdererHRP then
 				fu.notification("No se ha podido localizar al asesino.")
 				return
 			end
-
+	
 			local localCharacter = localplayer.Character
 			local gun = localCharacter and (
 				localCharacter:FindFirstChild("Gun")
 				or localCharacter:WaitForChild("Gun", 0.5)
 			)
-			local originPart = gun and gun:FindFirstChild("Handle")
-				or localCharacter and localCharacter:FindFirstChild("RightHand")
+			local originPart = localCharacter and localCharacter:FindFirstChild("RightHand")
+				or localCharacter and localCharacter:FindFirstChild("Right Arm")
+				or gun and gun:FindFirstChild("Handle")
 				or localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
 			if not gun or not originPart then
 				fu.notification("No se ha podido preparar la pistola.")
 				return
 			end
 
-			if os.clock() - lastGunShotAt < 1.05 then
+			if gunShotInFlight or os.clock() - lastGunShotAt < 1.05 then
 				fu.notification("La pistola todavía se está recargando.")
 				return
 			end
@@ -7345,22 +7803,27 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			if instakillshoot then
 				metadata.skipLearning = true
 				metadata.origin = murdererHRP.Position + Vector3.new(0, 1, 0)
+				metadata.aimOrigin = metadata.origin
 				metadata.predictedPosition = murdererHRP.Position
+				gunShotInFlight = true
 				fired, route, receipt = fireGunAtPosition(
 					gun,
 					metadata.origin,
 					metadata.predictedPosition
 				)
+				gunShotInFlight = false
 			else
 				metadata.origin = originPart.Position
+				gunShotInFlight = true
 				fired, route, receipt = fireGunAtPosition(
 					gun,
 					originPart.Position,
 					predictedPosition
 				)
+				gunShotInFlight = false
 			end
 			if fired then
-				lastGunShotAt = os.clock()
+				lastGunShotAt = receipt and receipt.sentAt or os.clock()
 				registerShotOutcome(murderer, metadata, route, receipt)
 			else
 				fu.notification("Esta versión de la pistola no es compatible.")
@@ -7371,40 +7834,42 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			--	[2] = predictedPosition,
 			--	[3] = "AH2"
 			--}
-
-
+	
+	
 			--localplayer.Character.Gun.KnifeLocal.CreateBeam.RemoteFunction:InvokeServer(unpack(args))
 	end
-
+	
 	local spawnAtPlayer = false
 	local loopThrow = false
 	local function knifeThrow(silent)
-		if findMurderer() ~= localplayer then
+		if not runtime.alive then return end
+		if findMurderer() ~= localplayer then 
 			if silent then return end
-
+	
 			fu.notification("No eres el asesino.")
-			return
+			return 
 		end
-
+	
 		if not localplayer.Character:FindFirstChild("Knife") then
 			local hum = localplayer.Character:FindFirstChild("Humanoid")
 			if localplayer.Backpack:FindFirstChild("Knife") then
 				hum:EquipTool(localplayer.Backpack:FindFirstChild("Knife"))
 			else
 				if silent then return end
-
+	
 				fu.notification("No tienes el cuchillo.")
 				return
 			end
 		end
-
+	
 		local localCharacter = localplayer.Character
 		local knife = localCharacter and (
 			localCharacter:FindFirstChild("Knife")
 			or localCharacter:WaitForChild("Knife", 0.5)
 		)
-		local originPart = knife and knife:FindFirstChild("Handle")
-			or localCharacter and localCharacter:FindFirstChild("RightHand")
+		local originPart = localCharacter and localCharacter:FindFirstChild("RightHand")
+			or localCharacter and localCharacter:FindFirstChild("Right Arm")
+			or knife and knife:FindFirstChild("Handle")
 			or localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
 		if not knife or not originPart then
 			if silent then return end
@@ -7417,10 +7882,19 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			return
 		end
 
+		local originPosition = originPart.Position
 		local NearestPlayer, predictedPosition, metadata = findBestKnifeTarget(
-			originPart.Position,
+			originPosition,
 			shootOffset
 		)
+		local refreshedOrigin = originPart.Position
+		if (refreshedOrigin - originPosition).Magnitude > 0.12 then
+			originPosition = refreshedOrigin
+			NearestPlayer, predictedPosition, metadata = findBestKnifeTarget(
+				originPosition,
+				shootOffset
+			)
+		end
 
 		if not NearestPlayer or not NearestPlayer.Character then
 			if silent then return end
@@ -7443,10 +7917,10 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		end
 
 		local argsThrowRemote = {
-			CFrame.new(originPart.Position),
+			CFrame.new(originPosition),
 			CFrame.new(predictedPosition),
 		}
-
+	
 		if spawnAtPlayer then
 			argsThrowRemote[1] = CFrame.new(nearestHRP.Position + (nearestHRP.CFrame.LookVector * 5))
 		end
@@ -7466,7 +7940,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			end
 			return
 		end
-		observeNextKnifePhysics(originPart.Position, predictedPosition)
+		observeNextKnifePhysics(originPosition, predictedPosition)
+		local sentAt = os.clock()
 		local sent = pcall(function()
 			knifeThrown:FireServer(unpack(argsThrowRemote))
 		end)
@@ -7474,21 +7949,23 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			if not silent then fu.notification("No se ha podido lanzar el cuchillo.") end
 			return
 		end
-		lastKnifeShotAt = os.clock()
-		metadata.origin = originPart.Position
+		lastKnifeShotAt = sentAt
+		metadata.origin = originPosition
 		registerShotOutcome(NearestPlayer, metadata, "KnifeThrown", {
 			accepted = true,
 			confirmed = false,
+			sentAt = sentAt,
+			completedAt = os.clock(),
 		})
 
 		--localplayer.Character:WaitForChild("Knife"):WaitForChild("Throw"):FireServer(unpack(argsThrowRemote))
 	end
-
-
-
-
+	
+	
+	
+	
 	task.spawn(function()
-		while task.wait(1.5) do
+		while runtime.alive and task.wait(1.5) do
 			if loopThrow then
 				knifeThrow(true)
 			end
@@ -7567,17 +8044,17 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	table.insert(module, {
 		Type = "Text",
-		Args = {"Aim V4 adaptativo. Base recomendada: 2.8."}
+		Args = {"Aim V5 adaptativo. Base automática: 2.8."}
 	})
 
 	table.insert(module, {
 		Type = "Text",
-		Args = {"Pistola multipunto + cuchillo con intercepción. Ping recomendado: 1.0."}
+		Args = {"Salto, ping, replicación y ruta del arma se calculan automáticamente."}
 	})
 
 	table.insert(module, {
 		Type = "Text",
-		Args = {"V4 aprende solo de trazas estables y guarda todo localmente en Delta."}
+		Args = {"V5 mide el cuchillo y guarda sus datos localmente en Delta."}
 	})
 
 	if true then
@@ -7885,11 +8362,11 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	})
 	
 	local ignoreknifethrow = false
-	game.Workspace.ChildAdded:Connect(function(chi)
+	runtime.track(game.Workspace.ChildAdded:Connect(function(chi)
 		if chi.Name == "ThrowingKnife" and ignoreknifethrow then
 			chi:Destroy()
 		end
-	end)
+	end))
 	
 	table.insert(module, {
 		Type = "Toggle",
