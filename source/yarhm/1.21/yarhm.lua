@@ -1887,6 +1887,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 			local tweenService = game:GetService("TweenService")
 			local activeInput
 			local pressed = false
+			local pressPosition
 			local startPosition
 			local initialPosition
 
@@ -1898,6 +1899,10 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 				if input.UserInputType == Enum.UserInputType.MouseButton1
 					or input.UserInputType == Enum.UserInputType.Touch then
 					pressed = true
+					pressPosition = input.Position
+					if input.UserInputType == Enum.UserInputType.Touch then
+						activeInput = input
+					end
 					local endedConnection
 					endedConnection = appRuntime.track(input.Changed:Connect(function()
 						if input.UserInputState == Enum.UserInputState.End then
@@ -1906,6 +1911,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 							end
 							self.Dragging = false
 							pressed = false
+							pressPosition = nil
 							appRuntime.release(endedConnection)
 						end
 					end))
@@ -1924,15 +1930,20 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					self:Disable()
 					return
 				end
-				if pressed then
+				if input ~= activeInput then return end
+				if pressed and pressPosition
+					and (input.Position - pressPosition).Magnitude < 9 then
+					return
+				end
+				if pressed and pressPosition then
 					pressed = false
 					self.Dragging = true
-					startPosition = input.Position
+					startPosition = pressPosition
 					initialPosition = (self.ToMove or self.Object).Position
 					self.LastPosition = input.Position
 					if self.DragStarted then self.DragStarted() end
 				end
-				if input ~= activeInput or not self.Dragging then return end
+				if not self.Dragging then return end
 
 				local delta = input.Position - startPosition
 				local nextPosition = UDim2.new(
@@ -1990,8 +2001,6 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 				Holded = Instance.new("BindableEvent"),
 				_connections = {},
 			}, ManagedClickAndHold)
-			local userInputService = game:GetService("UserInputService")
-
 			local function remember(connection)
 				table.insert(self._connections, appRuntime.track(connection))
 			end
@@ -2013,7 +2022,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					end
 				end)
 			end))
-			remember(userInputService.InputChanged:Connect(function(input)
+			remember(textButton.InputChanged:Connect(function(input)
 				if self.holdTask and self.initialPosition
 					and (input.UserInputType == Enum.UserInputType.MouseMovement
 						or input.UserInputType == Enum.UserInputType.Touch)
@@ -2021,7 +2030,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					cancelHold()
 				end
 			end))
-			remember(userInputService.InputEnded:Connect(function(input)
+			remember(textButton.InputEnded:Connect(function(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1
 					or input.UserInputType == Enum.UserInputType.Touch then
 					cancelHold()
@@ -2227,7 +2236,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					MaxVisibleGraphemes = #s
 				}):Play()
 		
-				notif.Close.MouseButton1Click:Connect(function()
+				notif.Close.Activated:Connect(function()
 					notif:SetAttribute("close", true)
 				end)
 		
@@ -2430,7 +2439,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 				table.insert(floatingButtonObjects, newFloatingButton)
 				local floatingButtonObjectSelf = floatingButtonObjects[#floatingButtonObjects]
 		
-				newFloatingButton.MouseButton1Click:Connect(function()
+				newFloatingButton.Activated:Connect(function()
 					if typeof(item["Args"][2]) == "function" then
 						item["Args"][2](button)
 					else
@@ -2683,7 +2692,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 		
 					local hold = false
 		
-					button.MouseButton1Click:Connect(function()
+					button.Activated:Connect(function()
 						item["Args"][2](button)
 					end)
 					
@@ -2747,7 +2756,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 						stroke.Transparency = 0.35
 						stroke.Thickness = 1
 		
-						button.MouseButton1Click:Connect(function()
+						button.Activated:Connect(function()
 							if item["Toggleable"] then
 								item["Args"][2][buttonname](button)
 								--print(States[buttonname .. module.Name])
@@ -2789,7 +2798,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					cloneinput.TextButton.BackgroundColor3 = FUNCTIONSmodule.getTheme().primaryColor
 		
 		
-					cloneinput.TextButton.MouseButton1Click:Connect(function()
+					cloneinput.TextButton.Activated:Connect(function()
 						item["Args"][3](cloneinput.TextButton, cloneinput.TextBox.Text)
 					end)
 				elseif item["Type"] == "Toggle" then
@@ -2812,7 +2821,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 						clonetoggletoggler.ImageLabel.Image = "rbxassetid://5959696880"
 					end
 		
-					clonetoggletoggler.MouseButton1Click:Connect(function()
+					clonetoggletoggler.Activated:Connect(function()
 						if toggleStates[item["Args"][1] .. module.Name] then
 							toggleStates[item["Args"][1] .. module.Name] = false
 							ts:Create(clonetoggletoggler, TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
@@ -2835,7 +2844,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					clonedropdown.Visible = true
 		
 					clonedropdown.TextLabel.Text = item["Args"][1]
-					clonedropdown.Frame.MouseButton1Click:Connect(function()
+					clonedropdown.Frame.Activated:Connect(function()
 						for _, v in ipairs(dropdownFrame.ScrollingFrame:GetChildren()) do if v:IsA("TextButton") and v.Name ~= "Sample" then v:Destroy() end end
 						local mouse = game.Players.LocalPlayer:GetMouse()
 						dropdownFrame.Position = UDim2.fromOffset(mouse.X, mouse.Y - 55)
@@ -2858,7 +2867,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 							clonedropdownbutton.Name = v
 							clonedropdownbutton.Visible = true
 							clonedropdownbutton.Text = v
-							clonedropdownbutton.MouseButton1Click:Connect(function()
+							clonedropdownbutton.Activated:Connect(function()
 								--dropdownFrame.Visible = false
 								clonedropdown.Frame.Text = v
 								item["Args"][3](clonedropdown.Frame, v)
@@ -3032,7 +3041,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					themedColor.Name = "themedColor"
 					themedColor.Value = "primaryColor"
 		
-					listbutton.MouseButton1Click:Connect(function()
+					listbutton.Activated:Connect(function()
 		
 						if selected.Value then
 							ts:Create(selected.Value, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
@@ -3112,7 +3121,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 				newButton.Name = button
 				newButton.Text = button
 				newButton.Parent = dialog.Options
-				newButton.MouseButton1Click:Connect(function()
+				newButton.Activated:Connect(function()
 					newButton.Parent.Parent.OnSelect:Fire(newButton.Name)
 				end)
 			end
@@ -3459,13 +3468,17 @@ local function DSZIHQM_routine() -- Routine: StarterGui.TIESAS.Init
 	script.Parent.Menu.CanvasGroup.Visible = false
 	script.Parent.Menu.CanvasGroup.TextLabel.Visible = true
 	script.Parent.Menu.CanvasGroup.ImageLabel.Visible = false
-	script.Parent.Menu.CanvasGroup.Interactable = true
+	script.Parent.Menu.CanvasGroup.Interactable = false
 	
 	script.Parent.Menu.CloseArea.AllowForSpring:Fire()
 	task.wait(1)
 	require(script.Parent.FUNCTIONS).loadFloatingButtons()
 	require(script.Parent.Theme):init(getgenv().TIESAS)
 	script.Parent.Menu.Visible = true
+	script.Parent.Menu.Area.Visible = true
+	script.Parent.Menu.Area.Interactable = true
+	script.Parent.Menu.Area.Active = true
+	script.Parent.Menu.Area.Area.Active = true
 	script.Parent.Open.Visible = false
 	script.Parent.Dropdown.Visible = false
 	script.Parent.Dialog.Visible = false
@@ -6397,7 +6410,7 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 		end
 	end
 	
-	script.Parent.MouseButton1Click:Connect(function()
+	script.Parent.Activated:Connect(function()
 		if not textHidden then
 			textHidden = true
 			TweenService:Create(script.Parent.TextLabel, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
@@ -6419,6 +6432,7 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 		menu.Area:FindFirstChildWhichIsA("UICorner").CornerRadius = UDim.new(0, 16)
 		task.spawn(function() task.wait(0.05) menu.List.Visible = false end)
 		menu.CanvasGroup.Visible = true
+		menu.CanvasGroup.Interactable = true
 		OpenerDraggable = true
 		if closing then closing:Cancel() end
 		TweenService:Create(menu.CanvasGroup, TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
@@ -6484,6 +6498,7 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 			menu.Area.UICorner.CornerRadius = UDim.new(0, 16)
 			task.delay(0.25, function() menu.List.Visible = false end)
 			menu.CanvasGroup.Visible = true
+			menu.CanvasGroup.Interactable = true
 	
 			OpenerDraggable = true
 	
@@ -6503,6 +6518,9 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 	-- Opener button behavior
 	local function sign(n) if n>0 then return 1 elseif n<0 then return -1 else return 0 end end
 	local function openMenu()
+		-- El overlay de minimizado tiene un ZIndex enorme. Se desactiva al
+		-- principio del toque para que nunca pueda interceptar el panel abierto.
+		menu.CanvasGroup.Interactable = false
 		TweenService:Create(menu, TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
 			AnchorPoint = Vector2.new(0.5, 0)
 		}):Play()
@@ -6537,7 +6555,7 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 			menu.CanvasGroup.Visible = false
 		end)
 	end
-	menu.CanvasGroup.Opener.MouseButton1Click:Connect(openMenu)
+	menu.CanvasGroup.Opener.Activated:Connect(openMenu)
 	appRuntime.track(UserInputService.InputBegan:Connect(function(inp, proc)
 		if proc then return end
 	
@@ -6565,7 +6583,7 @@ local function KUFNO_routine() -- Routine: StarterGui.TIESAS.FloatingButtonSetti
     end
 
 
-	script.Parent.MouseButton1Click:Connect(function()
+	script.Parent.Activated:Connect(function()
 		getgenv().TIESASFUNCTIONS.ftToggleVisibility()
 	end)
 end
@@ -6583,7 +6601,7 @@ local function XLYNZG_routine() -- Routine: StarterGui.TIESAS.FloatingButtonSett
     end
 
 
-	script.Parent.MouseButton1Click:Connect(function()
+	script.Parent.Activated:Connect(function()
 		getgenv().TIESASFUNCTIONS.ftToggleLock()
 	end)
 end
@@ -6601,7 +6619,7 @@ local function XAPKH_routine() -- Routine: StarterGui.TIESAS.FloatingButtonSetti
     end
 
 
-	script.Parent.MouseButton1Click:Connect(function()
+	script.Parent.Activated:Connect(function()
 		getgenv().TIESASFUNCTIONS.closeFinetuneFB()
 	end)
 end
