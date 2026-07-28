@@ -79,6 +79,7 @@ local mobileUiRouter = {
 }
 
 local mobileUserInputService = game:GetService("UserInputService")
+local mobileGuiService = game:GetService("GuiService")
 
 local function mobileUiSafeCall(callback, ...)
 	local ok, err = pcall(callback, ...)
@@ -108,16 +109,49 @@ local function mobileUiIsVisible(guiObject)
 	return true
 end
 
-local function mobileUiContains(guiObject, position)
+local function mobileUiScreenPosition(guiObject, position)
+	local point = Vector2.new(position.X, position.Y)
+	local screenGui = guiObject:FindFirstAncestorWhichIsA("ScreenGui")
+	if not screenGui or not screenGui.IgnoreGuiInset then
+		return point
+	end
+
+	-- InputObject.Position is measured from the usable viewport on iOS,
+	-- whereas an IgnoreGuiInset ScreenGui starts at the physical top-left.
+	-- The difference is especially visible on devices with Dynamic Island.
+	local ok, topLeftInset = pcall(function()
+		return mobileGuiService:GetGuiInset()
+	end)
+	if ok and typeof(topLeftInset) == "Vector2" then
+		point -= topLeftInset
+	end
+	return point
+end
+
+local function mobileUiContainsAt(guiObject, point)
 	if not mobileUiIsVisible(guiObject) then return false end
 	local topLeft = guiObject.AbsolutePosition
 	local size = guiObject.AbsoluteSize
 	return size.X > 0
 		and size.Y > 0
-		and position.X >= topLeft.X
-		and position.X <= topLeft.X + size.X
-		and position.Y >= topLeft.Y
-		and position.Y <= topLeft.Y + size.Y
+		and point.X >= topLeft.X
+		and point.X <= topLeft.X + size.X
+		and point.Y >= topLeft.Y
+		and point.Y <= topLeft.Y + size.Y
+end
+
+local function mobileUiContains(guiObject, position)
+	if not mobileUiIsVisible(guiObject) then return false end
+	local adjustedPoint = mobileUiScreenPosition(guiObject, position)
+	if mobileUiContainsAt(guiObject, adjustedPoint) then
+		return true
+	end
+
+	-- Algunos builds de Delta ya entregan la posición en coordenadas físicas.
+	-- El segundo intento permite ambos comportamientos sin ampliar la zona del
+	-- botón ni capturar toques pertenecientes al juego.
+	local rawPoint = Vector2.new(position.X, position.Y)
+	return rawPoint ~= adjustedPoint and mobileUiContainsAt(guiObject, rawPoint)
 end
 
 function mobileUiRouter:_register(collection, guiObject, data)
@@ -226,6 +260,7 @@ appRuntime.track(mobileUserInputService.InputBegan:Connect(function(input)
 	end
 
 	local active = {
+		input = input,
 		startPosition = position,
 		lastPosition = position,
 		velocity = Vector2.zero,
@@ -256,7 +291,7 @@ end))
 appRuntime.track(mobileUserInputService.InputChanged:Connect(function(input)
 	if input.UserInputType ~= Enum.UserInputType.Touch then return end
 	local active = mobileUiRouter.active
-	if not active then return end
+	if not active or active.input ~= input then return end
 
 	local position = input.Position
 	local deltaFromStart = position - active.startPosition
@@ -287,7 +322,9 @@ appRuntime.track(mobileUserInputService.InputChanged:Connect(function(input)
 end))
 
 appRuntime.track(mobileUserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.Touch then
+	if input.UserInputType == Enum.UserInputType.Touch
+		and mobileUiRouter.active
+		and mobileUiRouter.active.input == input then
 		mobileUiRouter:_finishTouch()
 	end
 end))
@@ -302,17 +339,24 @@ end)
 
 local function bindGuiButton(guiButton, callback)
 	mobileUiRouter:registerTap(guiButton, callback)
-	return appRuntime.track(guiButton.MouseButton1Click:Connect(function()
+	local lastNativeActivation = 0
+	local function nativeActivation()
 		if mobileUserInputService.TouchEnabled
 			and (mobileUiRouter.touchCapturedUntil[guiButton] or 0) > os.clock() then
 			return
 		end
+		local now = os.clock()
+		if now - lastNativeActivation < 0.08 then return end
+		lastNativeActivation = now
 		mobileUiSafeCall(callback)
-	end))
+	end
+	local activatedConnection = appRuntime.track(guiButton.Activated:Connect(nativeActivation))
+	appRuntime.track(guiButton.MouseButton1Click:Connect(nativeActivation))
+	return activatedConnection
 end
 
 runtimeEnvironment.TIESAS_APP_V6_RUNTIME = appRuntime
-runtimeEnvironment.TIESAS_BUILD_ID = "V6-UI-R2-20260728"
+runtimeEnvironment.TIESAS_BUILD_ID = "V6-UI-R3-20260728"
 
 local function notifyBeforeLoad(text)
 	pcall(function()
@@ -363,12 +407,15 @@ pcall(function()
 		if hidden and hidden ~= coreGui then table.insert(roots, hidden) end
 	end
 	for _, root in ipairs(roots) do
-		for _, child in ipairs(root:GetChildren()) do
-			if child.Name == "TiesasScripts"
-				or child.Name == "TiesasMM2ESP"
-				or child.Name == "ESPIndicators"
-				or child:GetAttribute("TiesasAppRoot") then
-				child:Destroy()
+		local candidates = root:GetDescendants()
+		for index = #candidates, 1, -1 do
+			local child = candidates[index]
+			if child:IsA("ScreenGui")
+				and (child.Name == "TiesasScripts"
+					or child.Name == "TiesasMM2ESP"
+					or child.Name == "ESPIndicators"
+					or child:GetAttribute("TiesasAppRoot")) then
+				pcall(function() child:Destroy() end)
 			end
 		end
 	end
@@ -3842,7 +3889,7 @@ local function DSZIHQM_routine() -- Routine: StarterGui.TIESAS.Init
 	script.Parent.Dropdown.Visible = false
 	script.Parent.Dialog.Visible = false
 	require(script.Parent.FUNCTIONS).notification(
-		"UI móvil R2 cargada. Menú, ESP y SHOOT listos."
+		"UI móvil R3 cargada. Toques y arrastre listos."
 	)
 	
 	--require(script.Parent.FUNCTIONS).refreshlist()
