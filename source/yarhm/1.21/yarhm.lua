@@ -64,6 +64,92 @@ function appRuntime.stop()
 	table.clear(appRuntime.cleanups)
 end
 
+-- GuiButton.Activated no se entrega de forma consistente en algunas versiones
+-- móviles de Delta cuando el mismo botón también inicia un arrastre. Esta ruta
+-- observa el InputObject que empezó sobre el botón y solo dispara si terminó
+-- como una pulsación real, sin depender de MouseButton1Click ni Activated.
+local function connectGuiTap(guiButton, callback, movementThreshold)
+	local threshold = movementThreshold or 12
+	local userInputService = game:GetService("UserInputService")
+	local activeInput
+	local startPosition
+	local moved = false
+	local changedConnection
+
+	local function matchesActiveInput(input, allowMouseMovement)
+		if not activeInput then return false end
+		return input == activeInput
+			or (activeInput.UserInputType == Enum.UserInputType.Touch
+				and input.UserInputType == Enum.UserInputType.Touch)
+			or (allowMouseMovement
+				and activeInput.UserInputType == Enum.UserInputType.MouseButton1
+				and input.UserInputType == Enum.UserInputType.MouseMovement)
+	end
+
+	local function finishTap()
+		if not activeInput then return end
+		local shouldActivate = not moved
+			and appRuntime.alive
+			and guiButton.Parent ~= nil
+			and guiButton.Visible
+		activeInput = nil
+		startPosition = nil
+		if changedConnection then
+			appRuntime.release(changedConnection)
+			changedConnection = nil
+		end
+		if shouldActivate then
+			task.defer(callback)
+		end
+	end
+
+	local beganConnection = appRuntime.track(guiButton.InputBegan:Connect(function(input)
+		if activeInput then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1
+			and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+
+		activeInput = input
+		startPosition = input.Position
+		moved = false
+
+		changedConnection = appRuntime.track(input.Changed:Connect(function()
+			if input ~= activeInput then
+				appRuntime.release(changedConnection)
+				changedConnection = nil
+				return
+			end
+
+			if startPosition
+				and (input.Position - startPosition).Magnitude > threshold then
+				moved = true
+			end
+
+			if input.UserInputState == Enum.UserInputState.End
+				or input.UserInputState == Enum.UserInputState.Cancel then
+				finishTap()
+			end
+		end))
+	end))
+
+	appRuntime.track(userInputService.InputChanged:Connect(function(input)
+		if matchesActiveInput(input, true)
+			and startPosition
+			and (input.Position - startPosition).Magnitude > threshold then
+			moved = true
+		end
+	end))
+
+	appRuntime.track(userInputService.InputEnded:Connect(function(input)
+		if matchesActiveInput(input, false) then
+			finishTap()
+		end
+	end))
+
+	return beganConnection
+end
+
 runtimeEnvironment.TIESAS_APP_V6_RUNTIME = appRuntime
 
 local function notifyBeforeLoad(text)
@@ -1654,6 +1740,7 @@ Converted["_FloatingButtonSetting"].Position = UDim2.new(0.5, 0, 0.5, 0)
 Converted["_FloatingButtonSetting"].Size = UDim2.new(1, 0, 1, 0)
 Converted["_FloatingButtonSetting"].Visible = false
 Converted["_FloatingButtonSetting"].ZIndex = 10
+Converted["_FloatingButtonSetting"].Active = true
 Converted["_FloatingButtonSetting"].Name = "FloatingButtonSetting"
 Converted["_FloatingButtonSetting"].Parent = Converted["_TIESAS"]
 
@@ -1664,6 +1751,8 @@ Converted["_ControlBarContainer"].BorderColor3 = Color3.fromRGB(0, 0, 0)
 Converted["_ControlBarContainer"].BorderSizePixel = 0
 Converted["_ControlBarContainer"].Position = UDim2.new(0.5, 0, 1, -50)
 Converted["_ControlBarContainer"].Size = UDim2.new(1, 0, 0, 40)
+Converted["_ControlBarContainer"].Active = true
+Converted["_ControlBarContainer"].ZIndex = 50
 Converted["_ControlBarContainer"].Name = "ControlBarContainer"
 Converted["_ControlBarContainer"].Parent = Converted["_FloatingButtonSetting"]
 
@@ -1674,6 +1763,8 @@ Converted["_ControlBar"].BorderColor3 = Color3.fromRGB(0, 0, 0)
 Converted["_ControlBar"].BorderSizePixel = 0
 Converted["_ControlBar"].Position = UDim2.new(0.5, 0, 1, -30)
 Converted["_ControlBar"].Size = UDim2.new(1, 0, 0, 40)
+Converted["_ControlBar"].Active = true
+Converted["_ControlBar"].ZIndex = 50
 Converted["_ControlBar"].Name = "ControlBar"
 Converted["_ControlBar"].Parent = Converted["_ControlBarContainer"]
 
@@ -1693,6 +1784,7 @@ Converted["_Visibility"].BackgroundColor3 = Color3.fromRGB(46.000001057982445, 4
 Converted["_Visibility"].BorderColor3 = Color3.fromRGB(0, 0, 0)
 Converted["_Visibility"].BorderSizePixel = 0
 Converted["_Visibility"].Size = UDim2.new(0, 200, 1, 0)
+Converted["_Visibility"].ZIndex = 51
 Converted["_Visibility"].Name = "Visibility"
 Converted["_Visibility"].Parent = Converted["_ControlBar"]
 
@@ -1721,6 +1813,7 @@ Converted["_Lock1"].BackgroundColor3 = Color3.fromRGB(46.000001057982445, 46.000
 Converted["_Lock1"].BorderColor3 = Color3.fromRGB(0, 0, 0)
 Converted["_Lock1"].BorderSizePixel = 0
 Converted["_Lock1"].Size = UDim2.new(0, 200, 1, 0)
+Converted["_Lock1"].ZIndex = 51
 Converted["_Lock1"].Name = "Lock"
 Converted["_Lock1"].Parent = Converted["_ControlBar"]
 
@@ -1749,6 +1842,7 @@ Converted["_Exit"].BackgroundColor3 = Color3.fromRGB(46.000001057982445, 0, 0)
 Converted["_Exit"].BorderColor3 = Color3.fromRGB(0, 0, 0)
 Converted["_Exit"].BorderSizePixel = 0
 Converted["_Exit"].Size = UDim2.new(1, 0, 1, 0)
+Converted["_Exit"].ZIndex = 51
 Converted["_Exit"].Name = "Exit"
 Converted["_Exit"].Parent = Converted["_ControlBar"]
 
@@ -1886,42 +1980,43 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 			local userInputService = game:GetService("UserInputService")
 			local tweenService = game:GetService("TweenService")
 			local activeInput
-			local pressed = false
 			local pressPosition
 			local startPosition
 			local initialPosition
+			local inputEndedConnection
 
 			local function remember(connection)
 				table.insert(self._connections, appRuntime.track(connection))
 			end
 
+			local function finishDrag()
+				if self.Dragging and self.DragEnded then
+					self.DragEnded(self.Velocity)
+				end
+				self.Dragging = false
+				activeInput = nil
+				pressPosition = nil
+				startPosition = nil
+				initialPosition = nil
+				if inputEndedConnection then
+					appRuntime.release(inputEndedConnection)
+					inputEndedConnection = nil
+				end
+			end
+
 			remember(self.Object.InputBegan:Connect(function(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1
 					or input.UserInputType == Enum.UserInputType.Touch then
-					pressed = true
+					if activeInput then return end
+					activeInput = input
 					pressPosition = input.Position
-					if input.UserInputType == Enum.UserInputType.Touch then
-						activeInput = input
-					end
-					local endedConnection
-					endedConnection = appRuntime.track(input.Changed:Connect(function()
-						if input.UserInputState == Enum.UserInputState.End then
-							if self.Dragging and self.DragEnded then
-								self.DragEnded(self.Velocity)
-							end
-							self.Dragging = false
-							pressed = false
-							pressPosition = nil
-							appRuntime.release(endedConnection)
+					self.Velocity = Vector2.zero
+					inputEndedConnection = appRuntime.track(input.Changed:Connect(function()
+						if input.UserInputState == Enum.UserInputState.End
+							or input.UserInputState == Enum.UserInputState.Cancel then
+							finishDrag()
 						end
 					end))
-				end
-			end))
-
-			remember(self.Object.InputChanged:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseMovement
-					or input.UserInputType == Enum.UserInputType.Touch then
-					activeInput = input
 				end
 			end))
 
@@ -1930,13 +2025,20 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					self:Disable()
 					return
 				end
-				if input ~= activeInput then return end
-				if pressed and pressPosition
-					and (input.Position - pressPosition).Magnitude < 9 then
+				if not activeInput or not pressPosition then return end
+
+				local isTrackedMove = input == activeInput
+					or (activeInput.UserInputType == Enum.UserInputType.Touch
+						and input.UserInputType == Enum.UserInputType.Touch)
+					or (activeInput.UserInputType == Enum.UserInputType.MouseButton1
+						and input.UserInputType == Enum.UserInputType.MouseMovement)
+				if not isTrackedMove then return end
+
+				if not self.Dragging
+					and (input.Position - pressPosition).Magnitude < 10 then
 					return
 				end
-				if pressed and pressPosition then
-					pressed = false
+				if not self.Dragging then
 					self.Dragging = true
 					startPosition = pressPosition
 					initialPosition = (self.ToMove or self.Object).Position
@@ -1970,7 +2072,22 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 				if self.Dragged then self.Dragged(nextPosition) end
 			end))
 
-			remember(self.Object.Destroying:Connect(function() self:Disable() end))
+			remember(userInputService.InputEnded:Connect(function(input)
+				if input == activeInput
+					or (activeInput
+						and activeInput.UserInputType == Enum.UserInputType.Touch
+						and input.UserInputType == Enum.UserInputType.Touch)
+					or (activeInput
+						and activeInput.UserInputType == Enum.UserInputType.MouseButton1
+						and input.UserInputType == Enum.UserInputType.MouseButton1) then
+					finishDrag()
+				end
+			end))
+
+			remember(self.Object.Destroying:Connect(function()
+				finishDrag()
+				self:Disable()
+			end))
 		end
 
 		function ManagedDraggableObject:Disable()
@@ -1980,6 +2097,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 				self.DragEnded(self.Velocity)
 			end
 			self.Dragging = false
+			self.Velocity = Vector2.zero
 			self:_disconnect()
 		end
 
@@ -1998,9 +2116,11 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 				holdTime = holdTime or 0.5,
 				holdTask = nil,
 				initialPosition = nil,
+				activeInput = nil,
 				Holded = Instance.new("BindableEvent"),
 				_connections = {},
 			}, ManagedClickAndHold)
+			local userInputService = game:GetService("UserInputService")
 			local function remember(connection)
 				table.insert(self._connections, appRuntime.track(connection))
 			end
@@ -2010,29 +2130,46 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					self.holdTask = nil
 				end
 				self.initialPosition = nil
+				self.activeInput = nil
 			end
 
-			remember(textButton.MouseButton1Down:Connect(function(x, y)
+			remember(textButton.InputBegan:Connect(function(input)
+				if input.UserInputType ~= Enum.UserInputType.MouseButton1
+					and input.UserInputType ~= Enum.UserInputType.Touch then
+					return
+				end
 				cancelHold()
-				self.initialPosition = Vector2.new(x, y)
+				self.activeInput = input
+				self.initialPosition = input.Position
 				self.holdTask = task.delay(self.holdTime, function()
-					if self.holdTask and textButton.Parent then
+					if self.holdTask and self.activeInput == input and textButton.Parent then
 						self.holdTask = nil
 						self.Holded:Fire()
 					end
 				end)
 			end))
-			remember(textButton.InputChanged:Connect(function(input)
+			remember(userInputService.InputChanged:Connect(function(input)
+				local isTrackedMove = input == self.activeInput
+					or (self.activeInput
+						and self.activeInput.UserInputType == Enum.UserInputType.Touch
+						and input.UserInputType == Enum.UserInputType.Touch)
+					or (self.activeInput
+						and self.activeInput.UserInputType == Enum.UserInputType.MouseButton1
+						and input.UserInputType == Enum.UserInputType.MouseMovement)
 				if self.holdTask and self.initialPosition
-					and (input.UserInputType == Enum.UserInputType.MouseMovement
-						or input.UserInputType == Enum.UserInputType.Touch)
+					and isTrackedMove
 					and (input.Position - self.initialPosition).Magnitude > 10 then
 					cancelHold()
 				end
 			end))
-			remember(textButton.InputEnded:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1
-					or input.UserInputType == Enum.UserInputType.Touch then
+			remember(userInputService.InputEnded:Connect(function(input)
+				if input == self.activeInput
+					or (self.activeInput
+						and self.activeInput.UserInputType == Enum.UserInputType.Touch
+						and input.UserInputType == Enum.UserInputType.Touch)
+					or (self.activeInput
+						and self.activeInput.UserInputType == Enum.UserInputType.MouseButton1
+						and input.UserInputType == Enum.UserInputType.MouseButton1) then
 					cancelHold()
 				end
 			end))
@@ -2311,6 +2448,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 			getgenv().fBSFButton = finetuningButton
 			finetuningButton.Parent = fBSF
 			finetuningButton.Name = "fBSFButton"
+			finetuningButton.ZIndex = 20
 			finetuningButton.AnchorPoint = Vector2.new(0, 0)
 			finetuningButton.Position = UDim2.fromOffset(button.AbsolutePosition.X, button.AbsolutePosition.Y + game:GetService("GuiService"):GetGuiInset().Y)
 		
@@ -4095,10 +4233,10 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 					and remotesFolder:FindFirstChild("Gameplay")
 				playerDataChanged = gameplayFolder
 					and gameplayFolder:FindFirstChild("PlayerDataChanged")
-			until not runtime.alive
-				or connectRoleDataRemote(playerDataChanged)
-				or os.clock() >= deadline
-		end)
+				until not runtime.alive
+					or connectRoleDataRemote(playerDataChanged)
+					or os.clock() >= deadline
+			end)
 	end
 	
 	
@@ -6410,7 +6548,7 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 		end
 	end
 	
-	script.Parent.Activated:Connect(function()
+	connectGuiTap(script.Parent, function()
 		if not textHidden then
 			textHidden = true
 			TweenService:Create(script.Parent.TextLabel, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
@@ -6435,10 +6573,10 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 		menu.CanvasGroup.Interactable = true
 		OpenerDraggable = true
 		if closing then closing:Cancel() end
-		TweenService:Create(menu.CanvasGroup, TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
-			GroupTransparency = 0
-		}):Play()
-	end)
+			TweenService:Create(menu.CanvasGroup, TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+				GroupTransparency = 0
+			}):Play()
+		end, 9)
 	
 	MenuDrag.DragEnded = function(vel)
 		TweenService:Create(
@@ -6555,7 +6693,7 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 			menu.CanvasGroup.Visible = false
 		end)
 	end
-	menu.CanvasGroup.Opener.Activated:Connect(openMenu)
+	connectGuiTap(menu.CanvasGroup.Opener, openMenu, 9)
 	appRuntime.track(UserInputService.InputBegan:Connect(function(inp, proc)
 		if proc then return end
 	
@@ -6583,7 +6721,7 @@ local function KUFNO_routine() -- Routine: StarterGui.TIESAS.FloatingButtonSetti
     end
 
 
-	script.Parent.Activated:Connect(function()
+	connectGuiTap(script.Parent, function()
 		getgenv().TIESASFUNCTIONS.ftToggleVisibility()
 	end)
 end
@@ -6601,7 +6739,7 @@ local function XLYNZG_routine() -- Routine: StarterGui.TIESAS.FloatingButtonSett
     end
 
 
-	script.Parent.Activated:Connect(function()
+	connectGuiTap(script.Parent, function()
 		getgenv().TIESASFUNCTIONS.ftToggleLock()
 	end)
 end
@@ -6619,7 +6757,7 @@ local function XAPKH_routine() -- Routine: StarterGui.TIESAS.FloatingButtonSetti
     end
 
 
-	script.Parent.Activated:Connect(function()
+	connectGuiTap(script.Parent, function()
 		getgenv().TIESASFUNCTIONS.closeFinetuneFB()
 	end)
 end
