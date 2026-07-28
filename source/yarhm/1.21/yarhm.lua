@@ -64,7 +64,255 @@ function appRuntime.stop()
 	table.clear(appRuntime.cleanups)
 end
 
+-- Delta móvil no siempre emite MouseButton1Click/Activated de forma fiable si
+-- un GuiButton también puede arrastrarse o mantenerse pulsado. Un único router
+-- decide la intención del toque usando los límites reales del control. No
+-- consume la entrada ni actúa fuera de la interfaz, por lo que los controles
+-- nativos de MM2 (melee, poderes y cámara) permanecen intactos.
+local mobileUiRouter = {
+	taps = {},
+	holds = {},
+	drags = {},
+	active = nil,
+	nextOrder = 0,
+	touchCapturedUntil = setmetatable({}, {__mode = "k"}),
+}
+
+local mobileUserInputService = game:GetService("UserInputService")
+
+local function mobileUiSafeCall(callback, ...)
+	local ok, err = pcall(callback, ...)
+	if not ok then
+		warn("[TIESAS UI] " .. tostring(err))
+	end
+end
+
+local function mobileUiIsVisible(guiObject)
+	if typeof(guiObject) ~= "Instance"
+		or not guiObject:IsA("GuiObject")
+		or not guiObject.Parent
+		or not guiObject.Visible then
+		return false
+	end
+
+	local ancestor = guiObject.Parent
+	while ancestor do
+		if ancestor:IsA("GuiObject") and not ancestor.Visible then
+			return false
+		end
+		if ancestor:IsA("ScreenGui") and not ancestor.Enabled then
+			return false
+		end
+		ancestor = ancestor.Parent
+	end
+	return true
+end
+
+local function mobileUiContains(guiObject, position)
+	if not mobileUiIsVisible(guiObject) then return false end
+	local topLeft = guiObject.AbsolutePosition
+	local size = guiObject.AbsoluteSize
+	return size.X > 0
+		and size.Y > 0
+		and position.X >= topLeft.X
+		and position.X <= topLeft.X + size.X
+		and position.Y >= topLeft.Y
+		and position.Y <= topLeft.Y + size.Y
+end
+
+function mobileUiRouter:_register(collection, guiObject, data)
+	self.nextOrder += 1
+	data.guiObject = guiObject
+	data.order = self.nextOrder
+	data.enabled = true
+	table.insert(collection, data)
+	return data
+end
+
+function mobileUiRouter:registerTap(guiObject, callback)
+	return self:_register(self.taps, guiObject, {callback = callback})
+end
+
+function mobileUiRouter:registerHold(guiObject, holdTime, callback)
+	return self:_register(self.holds, guiObject, {
+		holdTime = holdTime or 0.5,
+		callback = callback,
+	})
+end
+
+function mobileUiRouter:registerDrag(guiObject, callbacks)
+	return self:_register(self.drags, guiObject, {callbacks = callbacks})
+end
+
+local function mobileUiPriority(entry)
+	local priority = entry.order
+	local ancestor = entry.guiObject
+	while ancestor do
+		if ancestor:IsA("GuiObject") then
+			priority += ancestor.ZIndex * 100000
+		elseif ancestor:IsA("ScreenGui") then
+			priority += ancestor.DisplayOrder * 1000000000
+		end
+		ancestor = ancestor.Parent
+	end
+	return priority
+end
+
+function mobileUiRouter:_pick(collection, position)
+	for index = #collection, 1, -1 do
+		local guiObject = collection[index].guiObject
+		if typeof(guiObject) ~= "Instance" or not guiObject.Parent then
+			table.remove(collection, index)
+		end
+	end
+
+	local bestEntry
+	local bestPriority = -math.huge
+	for index = 1, #collection do
+		local entry = collection[index]
+		if entry.enabled and mobileUiContains(entry.guiObject, position) then
+			local priority = mobileUiPriority(entry)
+			if priority >= bestPriority then
+				bestEntry = entry
+				bestPriority = priority
+			end
+		end
+	end
+	return bestEntry
+end
+
+function mobileUiRouter:_cancelHold(active)
+	if active and active.holdTask then
+		pcall(task.cancel, active.holdTask)
+		active.holdTask = nil
+	end
+end
+
+function mobileUiRouter:_finishTouch()
+	local active = self.active
+	if not active then return end
+	self:_cancelHold(active)
+
+	if active.dragging and active.drag
+		and active.drag.enabled
+		and active.drag.callbacks.finish then
+		mobileUiSafeCall(
+			active.drag.callbacks.finish,
+			active.lastPosition,
+			active.velocity
+		)
+	elseif not active.holdFired and active.tap and active.tap.enabled then
+		self.touchCapturedUntil[active.tap.guiObject] = os.clock() + 0.8
+		mobileUiSafeCall(active.tap.callback)
+	end
+
+	self.active = nil
+end
+
+appRuntime.track(mobileUserInputService.InputBegan:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.Touch
+		or mobileUiRouter.active then
+		return
+	end
+
+	local position = input.Position
+	local tapEntry = mobileUiRouter:_pick(mobileUiRouter.taps, position)
+	local holdEntry = mobileUiRouter:_pick(mobileUiRouter.holds, position)
+	local dragEntry = mobileUiRouter:_pick(mobileUiRouter.drags, position)
+	if not tapEntry and not holdEntry and not dragEntry then return end
+
+	if tapEntry then
+		mobileUiRouter.touchCapturedUntil[tapEntry.guiObject] = os.clock() + 0.8
+	end
+
+	local active = {
+		startPosition = position,
+		lastPosition = position,
+		velocity = Vector2.zero,
+		tap = tapEntry,
+		hold = holdEntry,
+		drag = dragEntry,
+		dragging = false,
+		holdFired = false,
+	}
+	mobileUiRouter.active = active
+
+	if holdEntry then
+		active.holdTask = task.delay(holdEntry.holdTime, function()
+			if mobileUiRouter.active ~= active
+				or active.dragging
+				or not holdEntry.enabled
+				or not mobileUiContains(holdEntry.guiObject, active.lastPosition) then
+				return
+			end
+			active.holdTask = nil
+			active.holdFired = true
+			mobileUiRouter.touchCapturedUntil[holdEntry.guiObject] = os.clock() + 0.8
+			mobileUiSafeCall(holdEntry.callback)
+		end)
+	end
+end))
+
+appRuntime.track(mobileUserInputService.InputChanged:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.Touch then return end
+	local active = mobileUiRouter.active
+	if not active then return end
+
+	local position = input.Position
+	local deltaFromStart = position - active.startPosition
+	active.velocity = position - active.lastPosition
+	active.lastPosition = position
+
+	if not active.dragging and deltaFromStart.Magnitude >= 12 then
+		mobileUiRouter:_cancelHold(active)
+		active.tap = nil
+		if active.drag and active.drag.enabled then
+			active.dragging = true
+			if active.drag.callbacks.start then
+				mobileUiSafeCall(active.drag.callbacks.start, active.startPosition)
+			end
+		end
+	end
+
+	if active.dragging and active.drag
+		and active.drag.enabled
+		and active.drag.callbacks.move then
+		mobileUiSafeCall(
+			active.drag.callbacks.move,
+			position,
+			deltaFromStart,
+			active.velocity
+		)
+	end
+end))
+
+appRuntime.track(mobileUserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch then
+		mobileUiRouter:_finishTouch()
+	end
+end))
+
+appRuntime.cleanup(function()
+	mobileUiRouter:_cancelHold(mobileUiRouter.active)
+	mobileUiRouter.active = nil
+	table.clear(mobileUiRouter.taps)
+	table.clear(mobileUiRouter.holds)
+	table.clear(mobileUiRouter.drags)
+end)
+
+local function bindGuiButton(guiButton, callback)
+	mobileUiRouter:registerTap(guiButton, callback)
+	return appRuntime.track(guiButton.MouseButton1Click:Connect(function()
+		if mobileUserInputService.TouchEnabled
+			and (mobileUiRouter.touchCapturedUntil[guiButton] or 0) > os.clock() then
+			return
+		end
+		mobileUiSafeCall(callback)
+	end))
+end
+
 runtimeEnvironment.TIESAS_APP_V6_RUNTIME = appRuntime
+runtimeEnvironment.TIESAS_BUILD_ID = "V6-UI-R2-20260728"
 
 local function notifyBeforeLoad(text)
 	pcall(function()
@@ -1972,7 +2220,99 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 			self:_disconnect()
 		end
 
-		local DraggableObject = DraggableObjectf()
+		local MobileDraggableObject = {}
+		MobileDraggableObject.__index = MobileDraggableObject
+
+		function MobileDraggableObject.new(object, toMove, smooth, callbackOnly)
+			return setmetatable({
+				Object = object,
+				ToMove = toMove,
+				Smooth = smooth,
+				CallbackOnly = callbackOnly,
+				CanBeDragged = false,
+				Dragging = false,
+				Velocity = Vector2.zero,
+				LastPosition = nil,
+				_entry = nil,
+				_startPosition = nil,
+				_initialPosition = nil,
+			}, MobileDraggableObject)
+		end
+
+		function MobileDraggableObject:Enable()
+			if self.CanBeDragged or not self.Object or not self.Object.Parent then return end
+			self.CanBeDragged = true
+
+			if self._entry then
+				self._entry.enabled = true
+				return
+			end
+
+			self._entry = mobileUiRouter:registerDrag(self.Object, {
+				start = function(startPosition)
+					if not self.CanBeDragged then return end
+					self.Dragging = true
+					self.Velocity = Vector2.zero
+					self.LastPosition = startPosition
+					self._startPosition = startPosition
+					self._initialPosition = (self.ToMove or self.Object).Position
+					if self.DragStarted then
+						mobileUiSafeCall(self.DragStarted)
+					end
+				end,
+				move = function(position, deltaFromStart, velocity)
+					if not self.CanBeDragged or not self.Dragging then return end
+					local initialPosition = self._initialPosition
+					if not initialPosition then return end
+
+					local nextPosition = UDim2.new(
+						initialPosition.X.Scale,
+						initialPosition.X.Offset + deltaFromStart.X,
+						initialPosition.Y.Scale,
+						initialPosition.Y.Offset + deltaFromStart.Y
+					)
+					if not self.CallbackOnly then
+						nextPosition = clampGuiPosition(nextPosition, self.Object)
+						local moving = self.ToMove or self.Object
+						moving.Position = nextPosition
+					end
+
+					self.Velocity = velocity
+					self.LastPosition = position
+					if self.Dragged then
+						mobileUiSafeCall(self.Dragged, nextPosition)
+					end
+				end,
+				finish = function(_, velocity)
+					if not self.Dragging then return end
+					self.Dragging = false
+					self.Velocity = velocity or self.Velocity
+					if self.DragEnded then
+						mobileUiSafeCall(self.DragEnded, self.Velocity)
+					end
+					self._startPosition = nil
+					self._initialPosition = nil
+				end,
+			})
+		end
+
+		function MobileDraggableObject:Disable()
+			if not self.CanBeDragged then return end
+			self.CanBeDragged = false
+			if self._entry then self._entry.enabled = false end
+			if self.Dragging then
+				self.Dragging = false
+				if self.DragEnded then
+					mobileUiSafeCall(self.DragEnded, self.Velocity)
+				end
+			end
+			self._startPosition = nil
+			self._initialPosition = nil
+		end
+
+		local DraggableObject = mobileUserInputService.TouchEnabled
+			and MobileDraggableObject
+			or DraggableObjectf()
 		FUNCTIONSmodule.DraggableObject = DraggableObject
 		
 		function ClickAndHoldf()
@@ -2044,7 +2384,39 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 			end
 		end
 
-		local ClickAndHold = ClickAndHoldf()
+		local MobileClickAndHold = {}
+		MobileClickAndHold.__index = MobileClickAndHold
+
+		function MobileClickAndHold.new(textButton, holdTime)
+			local self = setmetatable({
+				textButton = textButton,
+				holdTime = holdTime or 0.5,
+				Holded = Instance.new("BindableEvent"),
+				_entry = nil,
+			}, MobileClickAndHold)
+			self._entry = mobileUiRouter:registerHold(
+				textButton,
+				self.holdTime,
+				function()
+					if self.Holded then
+						self.Holded:Fire()
+					end
+				end
+			)
+			return self
+		end
+
+		function MobileClickAndHold:Destroy()
+			if self._entry then self._entry.enabled = false end
+			if self.Holded then
+				self.Holded:Destroy()
+				self.Holded = nil
+			end
+		end
+
+		local ClickAndHold = mobileUserInputService.TouchEnabled
+			and MobileClickAndHold
+			or ClickAndHoldf()
 		function PointSavef()
 			local _=false local function d(...)if _ then print("[PointSave DEBUG]:",...)end end getgenv()._FOLDERS=getgenv()._FOLDERS or{} getgenv()._FILES=getgenv()._FILES or{} isfolder=isfolder or function(_)d("Checking if folder exists:",_) return getgenv()._FOLDERS[_]~=nil end makefolder=makefolder or function(_)d("Creating folder:",_) getgenv()._FOLDERS[_]={} return getgenv()._FOLDERS[_]end isfile=isfile or function(_)d("Checking if file exists:",_) return getgenv()._FILES[_]~=nil end writefile=writefile or function(a,_)d("Writing file:",a,"with content:",_) getgenv()._FILES[a]=_ return getgenv()._FILES[a]end readfile=readfile or function(_)d("Reading file:",_) return getgenv()._FILES[_]end delfile=delfile or function(_)d("Deleting file:",_) getgenv()._FILES[_]=nil end listfiles=listfiles or function(c)d("Listing files in folder:",c) local _=getgenv()._FOLDERS[c] if _ then local a={} for b,_ in pairs(getgenv()._FILES)do if b:sub(1,#c+1)==c.."/"then local _=b:sub(#c+2) d("Found file in folder:",_) table.insert(a,_)end end return a end d("Folder does not exist:",c) return{}end local b={} b.__index=b local c="PointSaveData" local function _()if not isfolder(c)then d("Base folder not found, creating:",c) makefolder(c)else d("Base folder already exists:",c)end end function b.new(a)d("Initializing new PointSave instance for namespace:",a) _() local _=setmetatable({},b) _.namespace=a _.folderPath=c.."/"..a if not isfolder(_.folderPath)then d("Namespace folder does not exist, creating:",_.folderPath) makefolder(_.folderPath)else d("Namespace folder already exists:",_.folderPath)end return _ end function b:set(b,a)local _=self.folderPath.."/"..b..".txt" d("Setting value for key:",b,"->",a) writefile(_,tostring(a))end function b:get(a)local _=self.folderPath.."/"..a..".txt" d("Getting value for key:",a) if isfile(_)then local _=readfile(_) d("Found value for key:",a,"->",_) return _ end d("Key not found:",a) return nil end function b:remove(a)local _=self.folderPath.."/"..a..".txt" d("Removing key:",a) if isfile(_)then delfile(_) d("Removed file for key:",a)else d("File for key does not exist:",a)end end function b:clear()d("Clearing all keys in namespace:",self.namespace) local _=listfiles(self.folderPath) for _,_ in ipairs(_)do local _=self.folderPath.."/".._ if isfile(_)then d("Deleting file:",_) delfile(_)end end end function b.deleteNamespace(a)local b=c.."/"..a d("Deleting namespace:",a) local _=listfiles(b) for _,_ in ipairs(_)do local _=b.."/".._ if isfile(_)then d("Deleting file from namespace:",_) delfile(_)end end getgenv()._FOLDERS[b]=nil d("Deleted folder for namespace:",a)end function b.listNamespaces()d("Listing all namespaces") _() local b={} for a,_ in pairs(getgenv()._FOLDERS)do if a:sub(1,#c+1)==c.."/"then local _=a:sub(#c+2) d("Found namespace:",_) table.insert(b,_)end end return b end return b
 		end
@@ -2227,7 +2599,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					MaxVisibleGraphemes = #s
 				}):Play()
 		
-				notif.Close.MouseButton1Click:Connect(function()
+				bindGuiButton(notif.Close, function()
 					notif:SetAttribute("close", true)
 				end)
 		
@@ -2430,7 +2802,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 				table.insert(floatingButtonObjects, newFloatingButton)
 				local floatingButtonObjectSelf = floatingButtonObjects[#floatingButtonObjects]
 		
-				newFloatingButton.MouseButton1Click:Connect(function()
+				bindGuiButton(newFloatingButton, function()
 					if typeof(item["Args"][2]) == "function" then
 						item["Args"][2](button)
 					else
@@ -2683,7 +3055,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 		
 					local hold = false
 		
-					button.MouseButton1Click:Connect(function()
+					bindGuiButton(button, function()
 						item["Args"][2](button)
 					end)
 					
@@ -2747,7 +3119,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 						stroke.Transparency = 0.35
 						stroke.Thickness = 1
 		
-						button.MouseButton1Click:Connect(function()
+						bindGuiButton(button, function()
 							if item["Toggleable"] then
 								item["Args"][2][buttonname](button)
 								--print(States[buttonname .. module.Name])
@@ -2789,7 +3161,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					cloneinput.TextButton.BackgroundColor3 = FUNCTIONSmodule.getTheme().primaryColor
 		
 		
-					cloneinput.TextButton.MouseButton1Click:Connect(function()
+					bindGuiButton(cloneinput.TextButton, function()
 						item["Args"][3](cloneinput.TextButton, cloneinput.TextBox.Text)
 					end)
 				elseif item["Type"] == "Toggle" then
@@ -2812,7 +3184,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 						clonetoggletoggler.ImageLabel.Image = "rbxassetid://5959696880"
 					end
 		
-					clonetoggletoggler.MouseButton1Click:Connect(function()
+					bindGuiButton(clonetoggletoggler, function()
 						if toggleStates[item["Args"][1] .. module.Name] then
 							toggleStates[item["Args"][1] .. module.Name] = false
 							ts:Create(clonetoggletoggler, TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
@@ -2835,7 +3207,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					clonedropdown.Visible = true
 		
 					clonedropdown.TextLabel.Text = item["Args"][1]
-					clonedropdown.Frame.MouseButton1Click:Connect(function()
+					bindGuiButton(clonedropdown.Frame, function()
 						for _, v in ipairs(dropdownFrame.ScrollingFrame:GetChildren()) do if v:IsA("TextButton") and v.Name ~= "Sample" then v:Destroy() end end
 						local mouse = game.Players.LocalPlayer:GetMouse()
 						dropdownFrame.Position = UDim2.fromOffset(mouse.X, mouse.Y - 55)
@@ -2858,7 +3230,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 							clonedropdownbutton.Name = v
 							clonedropdownbutton.Visible = true
 							clonedropdownbutton.Text = v
-							clonedropdownbutton.MouseButton1Click:Connect(function()
+							bindGuiButton(clonedropdownbutton, function()
 								--dropdownFrame.Visible = false
 								clonedropdown.Frame.Text = v
 								item["Args"][3](clonedropdown.Frame, v)
@@ -3032,7 +3404,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					themedColor.Name = "themedColor"
 					themedColor.Value = "primaryColor"
 		
-					listbutton.MouseButton1Click:Connect(function()
+					bindGuiButton(listbutton, function()
 		
 						if selected.Value then
 							ts:Create(selected.Value, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
@@ -3112,7 +3484,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 				newButton.Name = button
 				newButton.Text = button
 				newButton.Parent = dialog.Options
-				newButton.MouseButton1Click:Connect(function()
+				bindGuiButton(newButton, function()
 					newButton.Parent.Parent.OnSelect:Fire(newButton.Name)
 				end)
 			end
@@ -3470,7 +3842,7 @@ local function DSZIHQM_routine() -- Routine: StarterGui.TIESAS.Init
 	script.Parent.Dropdown.Visible = false
 	script.Parent.Dialog.Visible = false
 	require(script.Parent.FUNCTIONS).notification(
-		"Menú, ESP y SHOOT listos. Minimiza el menú para dejar visible el botón TS."
+		"UI móvil R2 cargada. Menú, ESP y SHOOT listos."
 	)
 	
 	--require(script.Parent.FUNCTIONS).refreshlist()
@@ -6397,7 +6769,7 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 		end
 	end
 	
-	script.Parent.MouseButton1Click:Connect(function()
+	bindGuiButton(script.Parent, function()
 		if not textHidden then
 			textHidden = true
 			TweenService:Create(script.Parent.TextLabel, TweenInfo.new(1, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
@@ -6537,7 +6909,7 @@ local function AWDPHWS_routine() -- Routine: StarterGui.TIESAS.Menu.CloseArea.Cl
 			menu.CanvasGroup.Visible = false
 		end)
 	end
-	menu.CanvasGroup.Opener.MouseButton1Click:Connect(openMenu)
+	bindGuiButton(menu.CanvasGroup.Opener, openMenu)
 	appRuntime.track(UserInputService.InputBegan:Connect(function(inp, proc)
 		if proc then return end
 	
@@ -6565,7 +6937,7 @@ local function KUFNO_routine() -- Routine: StarterGui.TIESAS.FloatingButtonSetti
     end
 
 
-	script.Parent.MouseButton1Click:Connect(function()
+	bindGuiButton(script.Parent, function()
 		getgenv().TIESASFUNCTIONS.ftToggleVisibility()
 	end)
 end
@@ -6583,7 +6955,7 @@ local function XLYNZG_routine() -- Routine: StarterGui.TIESAS.FloatingButtonSett
     end
 
 
-	script.Parent.MouseButton1Click:Connect(function()
+	bindGuiButton(script.Parent, function()
 		getgenv().TIESASFUNCTIONS.ftToggleLock()
 	end)
 end
@@ -6601,7 +6973,7 @@ local function XAPKH_routine() -- Routine: StarterGui.TIESAS.FloatingButtonSetti
     end
 
 
-	script.Parent.MouseButton1Click:Connect(function()
+	bindGuiButton(script.Parent, function()
 		getgenv().TIESASFUNCTIONS.closeFinetuneFB()
 	end)
 end
