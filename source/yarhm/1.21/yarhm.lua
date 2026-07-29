@@ -7216,6 +7216,103 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	local spawnAtPlayer = false
 	local loopThrow = false
+	local animatedKnifeThrow = false
+	local knifeThrowInFlight = false
+	local knifeAnimationCache = setmetatable({}, {__mode = "k"})
+	local missingKnifeAnimationWarned = false
+
+	local function stopKnifeAnimationTracks(tracks)
+		if type(tracks) ~= "table" then return end
+		for _, track in pairs(tracks) do
+			if typeof(track) == "Instance" and track:IsA("AnimationTrack") then
+				pcall(function()
+					if track.IsPlaying then track:Stop(0.05) end
+				end)
+			end
+		end
+	end
+
+	local function getKnifeAnimationTracks(knife, character)
+		local humanoid = character
+			and character:FindFirstChildOfClass("Humanoid")
+		local animator = humanoid
+			and humanoid:FindFirstChildOfClass("Animator")
+		local knifeClient = knife and knife:FindFirstChild("KnifeClient")
+		if not animator or not knifeClient then return nil end
+
+		local animations = {
+			ThrowCharge = knifeClient:FindFirstChild("ThrowCharge"),
+			ThrowHold = knifeClient:FindFirstChild("ThrowHold"),
+			ThrowKnife = knifeClient:FindFirstChild("ThrowKnife"),
+		}
+		for _, animation in pairs(animations) do
+			if not animation or not animation:IsA("Animation") then return nil end
+		end
+
+		local cached = knifeAnimationCache[knife]
+		if cached and cached.animator == animator
+			and cached.ThrowCharge and cached.ThrowHold
+			and cached.ThrowKnife then
+			return cached
+		end
+		if cached then stopKnifeAnimationTracks(cached) end
+
+		local tracks = {animator = animator}
+		for name, animation in pairs(animations) do
+			local ok, track = pcall(function()
+				return animator:LoadAnimation(animation)
+			end)
+			if not ok or not track then
+				stopKnifeAnimationTracks(tracks)
+				return nil
+			end
+			track.Priority = Enum.AnimationPriority.Action
+			track.Looped = false
+			tracks[name] = track
+		end
+		knifeAnimationCache[knife] = tracks
+		return tracks
+	end
+
+	local function playKnifeThrowWindup(knife, character)
+		local tracks = getKnifeAnimationTracks(knife, character)
+		if not tracks then return false, "missing" end
+		stopKnifeAnimationTracks(tracks)
+
+		local ok = pcall(function()
+			tracks.ThrowCharge:Play(0.05, 1, 1)
+		end)
+		if not ok then return false, "playback" end
+		task.wait(0.1)
+		if not runtime.alive or localplayer.Character ~= character
+			or not knife.Parent then
+			stopKnifeAnimationTracks(tracks)
+			return false, "cancelled"
+		end
+
+		pcall(function() tracks.ThrowCharge:Stop(0.04) end)
+		pcall(function() tracks.ThrowHold:Play(0.04, 1, 1) end)
+		task.wait(0.3)
+		if not runtime.alive or localplayer.Character ~= character
+			or not knife.Parent then
+			stopKnifeAnimationTracks(tracks)
+			return false, "cancelled"
+		end
+
+		pcall(function() tracks.ThrowHold:Stop(0.035) end)
+		local throwPlayed = pcall(function()
+			tracks.ThrowKnife:Play(0.025, 1, 1)
+		end)
+		return throwPlayed, throwPlayed and nil or "playback"
+	end
+
+	runtime.cleanup(function()
+		for _, tracks in pairs(knifeAnimationCache) do
+			stopKnifeAnimationTracks(tracks)
+		end
+		table.clear(knifeAnimationCache)
+	end)
+
 	local function knifeThrow(silent)
 		if not runtime.alive then return end
 		if findMurderer() ~= localplayer then 
@@ -7223,6 +7320,12 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 			fu.notification("No eres el asesino.")
 			return 
+		end
+		if knifeThrowInFlight then
+			if not silent then
+				fu.notification("El cuchillo ya está preparando un lanzamiento.")
+			end
+			return
 		end
 	
 		if not localplayer.Character:FindFirstChild("Knife") then
@@ -7292,18 +7395,6 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			return
 		end
 
-		local argsThrowRemote = {
-			CFrame.new(originPosition),
-			CFrame.new(predictedPosition),
-		}
-	
-		if spawnAtPlayer then
-			argsThrowRemote[1] = CFrame.new(nearestHRP.Position + (nearestHRP.CFrame.LookVector * 5))
-		end
-		-- task.spawn(function()
-		--     task.wait(2)
-		--     -- nearestHRP.Anchored = false
-		-- end)
 		local events = knife:FindFirstChild("Events")
 			or knife:WaitForChild("Events", 0.5)
 		local knifeThrown = events and (
@@ -7316,6 +7407,76 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			end
 			return
 		end
+
+		local usesWindup = animatedKnifeThrow and not silent
+		if usesWindup then
+			knifeThrowInFlight = true
+			local animated, reason = playKnifeThrowWindup(
+				knife,
+				localCharacter
+			)
+			if reason == "cancelled" then
+				knifeThrowInFlight = false
+				return
+			end
+			if not animated and not missingKnifeAnimationWarned then
+				missingKnifeAnimationWarned = true
+				fu.notification(
+					"Esta versión del cuchillo no incluye la animación; se lanzará directamente."
+				)
+			end
+
+			-- La espera de la animación cambia tanto al objetivo como la posición
+			-- de la mano. Aim V7 se vuelve a ejecutar en el frame de liberación,
+			-- sin añadir 0.4 s artificiales a una predicción ya envejecida.
+			if not runtime.alive or localplayer.Character ~= localCharacter
+				or knife.Parent ~= localCharacter then
+				knifeThrowInFlight = false
+				return
+			end
+			local releaseOrigin = getWeaponOrigin(
+				knife,
+				localCharacter,
+				"knife"
+			)
+			if not releaseOrigin then
+				knifeThrowInFlight = false
+				fu.notification("No se ha podido localizar el cuchillo al lanzarlo.")
+				return
+			end
+			originPosition = releaseOrigin
+			NearestPlayer, predictedPosition, metadata = findBestKnifeTarget(
+				originPosition,
+				shootOffset
+			)
+			if not NearestPlayer or not NearestPlayer.Character
+				or not predictedPosition or not metadata then
+				knifeThrowInFlight = false
+				fu.notification("El objetivo dejó de tener una trayectoria despejada.")
+				return
+			end
+			nearestHRP = NearestPlayer.Character:FindFirstChild(
+				"HumanoidRootPart"
+			)
+			if not nearestHRP then
+				knifeThrowInFlight = false
+				fu.notification("El objetivo ya no está disponible.")
+				return
+			end
+		end
+
+		local argsThrowRemote = {
+			CFrame.new(originPosition),
+			CFrame.new(predictedPosition),
+		}
+	
+		if spawnAtPlayer then
+			argsThrowRemote[1] = CFrame.new(nearestHRP.Position + (nearestHRP.CFrame.LookVector * 5))
+		end
+		-- task.spawn(function()
+		--     task.wait(2)
+		--     -- nearestHRP.Anchored = false
+		-- end)
 		observeNextKnifePhysics(
 			originPosition,
 			predictedPosition,
@@ -7327,9 +7488,11 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			knifeThrown:FireServer(unpack(argsThrowRemote))
 		end)
 		if not sent then
+			knifeThrowInFlight = false
 			if not silent then fu.notification("No se ha podido lanzar el cuchillo.") end
 			return
 		end
+		knifeThrowInFlight = false
 		lastKnifeShotAt = sentAt
 		metadata.origin = originPosition
 		registerShotOutcome(NearestPlayer, metadata, "KnifeThrown", {
@@ -7380,6 +7543,12 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	table.insert(module, shootButtonItem)
 	
 	
+	table.insert(module, {
+		Type = "Toggle",
+		Args = {"Animación al lanzar con SHOOT", function(Self, tog)
+			animatedKnifeThrow = tog
+		end}
+	})
 	
 	table.insert(module, {
 		Type = "Toggle",
