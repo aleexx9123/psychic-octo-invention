@@ -7411,6 +7411,21 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		local usesWindup = animatedKnifeThrow and not silent
 		if usesWindup then
 			knifeThrowInFlight = true
+			local windupStartedAt = os.clock()
+			local windupRoot = localCharacter:FindFirstChild(
+				"HumanoidRootPart"
+			)
+			local stableOriginOffset
+			if windupRoot and windupRoot:IsA("BasePart") then
+				stableOriginOffset = windupRoot.CFrame:PointToObjectSpace(
+					originPosition
+				)
+				-- Un accesorio o skin mal soldado no debe convertir una
+				-- posición absurda en el origen de todos los lanzamientos.
+				if stableOriginOffset.Magnitude > 7 then
+					stableOriginOffset = nil
+				end
+			end
 			local animated, reason = playKnifeThrowWindup(
 				knife,
 				localCharacter
@@ -7434,21 +7449,62 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				knifeThrowInFlight = false
 				return
 			end
-			local releaseOrigin = getWeaponOrigin(
-				knife,
-				localCharacter,
-				"knife"
+			-- La animación mueve físicamente Handle/RightHand. Usar esa pose
+			-- como origen altera la recta enviada al servidor, aunque el punto
+			-- objetivo sea correcto. Conservamos el origen neutro relativo al
+			-- HumanoidRootPart y solo aplicamos el movimiento/giro real del
+			-- jugador ocurrido durante la preparación.
+			local releaseRoot = localCharacter:FindFirstChild(
+				"HumanoidRootPart"
 			)
+			local releaseOrigin
+			if stableOriginOffset and releaseRoot
+				and releaseRoot:IsA("BasePart") then
+				releaseOrigin = releaseRoot.CFrame:PointToWorldSpace(
+					stableOriginOffset
+				)
+			else
+				releaseOrigin = getWeaponOrigin(
+					knife,
+					localCharacter,
+					"knife"
+				)
+			end
 			if not releaseOrigin then
 				knifeThrowInFlight = false
 				fu.notification("No se ha podido localizar el cuchillo al lanzarlo.")
 				return
 			end
 			originPosition = releaseOrigin
-			NearestPlayer, predictedPosition, metadata = findBestKnifeTarget(
-				originPosition,
-				shootOffset
-			)
+
+			-- Mantener el objetivo elegido al pulsar evita que la espera visual
+			-- salte silenciosamente a otra persona. Su posición sí se vuelve a
+			-- calcular aquí con las muestras más recientes de Aim V7.
+			local releasePosition
+			local releaseMetadata
+			if isValidRoundTarget(NearestPlayer) then
+				releasePosition, releaseMetadata = getKnifePredictedPosition(
+					NearestPlayer,
+					originPosition,
+					shootOffset
+				)
+				if releasePosition and not isTrajectoryClear(
+					NearestPlayer.Character,
+					originPosition,
+					releasePosition,
+					0.24
+				) then
+					releasePosition = nil
+					releaseMetadata = nil
+				end
+			end
+			if releasePosition and releaseMetadata then
+				predictedPosition = releasePosition
+				metadata = releaseMetadata
+			else
+				NearestPlayer, predictedPosition, metadata =
+					findBestKnifeTarget(originPosition, shootOffset)
+			end
 			if not NearestPlayer or not NearestPlayer.Character
 				or not predictedPosition or not metadata then
 				knifeThrowInFlight = false
@@ -7463,6 +7519,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				fu.notification("El objetivo ya no está disponible.")
 				return
 			end
+			metadata.animationWindup = true
+			metadata.windupDuration = os.clock() - windupStartedAt
 		end
 
 		local argsThrowRemote = {
