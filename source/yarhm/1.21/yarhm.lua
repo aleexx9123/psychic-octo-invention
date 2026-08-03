@@ -5,6 +5,7 @@ local StarterGui = game:GetService("StarterGui")
 local supportedGames = {
 	[66654135] = "Murder Mystery 2",
 	[10413186812] = "MMV",
+	[10354852672] = "MMV",
 }
 local currentGameName = supportedGames[game.GameId]
 
