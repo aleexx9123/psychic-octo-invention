@@ -872,6 +872,7 @@ Converted["_FloatingButton"].TextWrapped = true
 Converted["_FloatingButton"].AutoButtonColor = false
 Converted["_FloatingButton"].AnchorPoint = Vector2.new(0.5, 0.5)
 Converted["_FloatingButton"].BackgroundColor3 = Color3.fromRGB(31.000000052154064, 31.000000052154064, 31.000000052154064)
+Converted["_FloatingButton"].BackgroundTransparency = 0.5
 Converted["_FloatingButton"].BorderColor3 = Color3.fromRGB(0, 0, 0)
 Converted["_FloatingButton"].BorderSizePixel = 0
 Converted["_FloatingButton"].ClipsDescendants = true
@@ -2829,6 +2830,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 				newFloatingButton.Text = string.gsub(buttonname, "_", " ")
 				
 				newFloatingButton.BackgroundColor3 = FUNCTIONSmodule.getTheme().primaryColor
+				newFloatingButton.BackgroundTransparency = 0.5
 				local themedColor = Instance.new("StringValue", newFloatingButton)
 				themedColor.Name = "themedColor"
 				themedColor.Value = "primaryColor"
@@ -4210,6 +4212,156 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local autoGetDroppedGun = false
 	
 	local localplayer = game:GetService("Players").LocalPlayer
+	local bombJumpCooldowns = {
+		FakeBomb = 0,
+		GoldBomb = 0,
+	}
+
+	local function findBombTool(container, bombName)
+		if not container then return nil end
+		local exact = container:FindFirstChild(bombName)
+		if exact and exact:IsA("Tool") then return exact end
+
+		local wantsGold = bombName == "GoldBomb"
+		for _, child in ipairs(container:GetChildren()) do
+			if child:IsA("Tool") then
+				local lowered = string.lower(child.Name)
+				local isBomb = string.find(lowered, "bomb", 1, true) ~= nil
+				local isGold = string.find(lowered, "gold", 1, true) ~= nil
+				if isBomb and isGold == wantsGold then return child end
+			end
+		end
+		return nil
+	end
+
+	local function requestBombTool(bombName)
+		local character = localplayer.Character
+		local backpack = localplayer:FindFirstChildOfClass("Backpack")
+		local bomb = findBombTool(character, bombName)
+			or findBombTool(backpack, bombName)
+		if bomb then return bomb end
+
+		local remotes = game.ReplicatedStorage:FindFirstChild("Remotes")
+		local extras = remotes and remotes:FindFirstChild("Extras")
+		local replicateToy = extras and extras:FindFirstChild("ReplicateToy")
+		if not replicateToy then return nil end
+
+		local requested = pcall(function()
+			if replicateToy:IsA("RemoteFunction") then
+				replicateToy:InvokeServer(bombName)
+			elseif replicateToy:IsA("RemoteEvent") then
+				replicateToy:FireServer(bombName)
+			else
+				error("unsupported ReplicateToy")
+			end
+		end)
+		if not requested then return nil end
+
+		local deadline = os.clock() + 1.25
+		repeat
+			task.wait()
+			character = localplayer.Character
+			backpack = localplayer:FindFirstChildOfClass("Backpack")
+			bomb = findBombTool(character, bombName)
+				or findBombTool(backpack, bombName)
+		until bomb or os.clock() >= deadline or not runtime.alive
+		return bomb
+	end
+
+	local function performBombJump(bombName)
+		if not runtime.alive then return end
+		local now = os.clock()
+		local remaining = (bombJumpCooldowns[bombName] or 0) - now
+		if remaining > 0 then
+			fu.notification(string.format(
+				"La bomba estará lista en %d s.",
+				math.ceil(remaining)
+			))
+			return
+		end
+
+		local character = localplayer.Character
+		local backpack = localplayer:FindFirstChildOfClass("Backpack")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not character or not backpack or not humanoid or humanoid.Health <= 0
+			or not root or not root:IsA("BasePart") then
+			fu.notification("Necesitas estar vivo para usar el salto de bomba.")
+			return
+		end
+
+		local bomb = requestBombTool(bombName)
+		if not bomb then
+			fu.notification(bombName == "GoldBomb"
+				and "No se ha podido obtener Gold Bomb. Debes tenerla desbloqueada."
+				or "No se ha podido obtener la bomba normal.")
+			return
+		end
+
+		bomb.Parent = character
+		local remote = bomb:FindFirstChild("Remote")
+		if not remote or not remote:IsA("RemoteEvent") then
+			bomb.Parent = backpack
+			fu.notification("Esta versión de la bomba no es compatible.")
+			return
+		end
+
+		local fired = pcall(function()
+			remote:FireServer(root.CFrame * CFrame.new(0, -3, 0), 50)
+		end)
+		if not fired then
+			bomb.Parent = backpack
+			fu.notification("No se ha podido colocar la bomba.")
+			return
+		end
+
+		bombJumpCooldowns[bombName] = os.clock() + 20
+		task.wait(0.05)
+		local oldJumpPower = humanoid.JumpPower
+		if runtime.alive and localplayer.Character == character
+			and humanoid.Health > 0 then
+			humanoid.JumpPower = 53
+			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+			task.wait(0.3)
+		end
+		if humanoid.Parent then humanoid.JumpPower = oldJumpPower end
+		if localplayer.Character == character and bomb.Parent == character
+			and backpack.Parent then
+			bomb.Parent = backpack
+		end
+	end
+
+	local normalBombJumpItem = {
+		Type = "Button",
+		Args = {"NORMAL_BOMB_JUMP", function()
+			performBombJump("FakeBomb")
+		end},
+	}
+	local goldBombJumpItem = {
+		Type = "Button",
+		Args = {"GOLD_BOMB_JUMP", function()
+			performBombJump("GoldBomb")
+		end},
+	}
+
+	local function setBombJumpButtonVisible(item, visible)
+		local name = string.gsub(item.Args[1], "_", "")
+		local holder = getgenv().TIESAS and getgenv().TIESAS:FindFirstChild("FloatingButtons")
+		local existing = holder and holder:FindFirstChild(name)
+		if visible and not existing then
+			fu.createFloatingButton(item, Instance.new("TextButton"), item.Args[1])
+			local targetY = item == normalBombJumpItem and 150 or 210
+			task.delay(0.8, function()
+				if not runtime.alive then return end
+				local currentHolder = getgenv().TIESAS
+					and getgenv().TIESAS:FindFirstChild("FloatingButtons")
+				local created = currentHolder and currentHolder:FindFirstChild(name)
+				if created then created.Position = UDim2.fromOffset(125, targetY) end
+			end)
+		elseif not visible and existing then
+			fu.createFloatingButton(item, Instance.new("TextButton"), item.Args[1])
+		end
+	end
 	
 	local playerData = {}
 	
@@ -7613,6 +7765,20 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		Type = "Toggle",
 		Args = {"Lanzamiento automático de cuchillo", function(Self, tog)
 			loopThrow = tog
+		end}
+	})
+
+	table.insert(module, {
+		Type = "Toggle",
+		Args = {"Show Normal Bomb Jump", function(Self, tog)
+			setBombJumpButtonVisible(normalBombJumpItem, tog)
+		end}
+	})
+
+	table.insert(module, {
+		Type = "Toggle",
+		Args = {"Show Gold Bomb Jump", function(Self, tog)
+			setBombJumpButtonVisible(goldBombJumpItem, tog)
 		end}
 	})
 	-- table.insert(module, {
