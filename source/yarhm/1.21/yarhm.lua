@@ -2516,6 +2516,15 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 				return UDim2.new(tonumber(xScale), tonumber(xOffset), tonumber(yScale), tonumber(yOffset))
 			end
 		end
+		local function floatingButtonSerializer(button, dragger)
+			return table.concat({
+				udim2Serializer(button.Position),
+				udim2Serializer(button.Size),
+				tostring(button.Visible),
+				tostring(dragger.CanBeDragged),
+				tostring(button.BackgroundTransparency),
+			}, "|")
+		end
 		local function lrp(a,b,t)
 			return a + (b - a) * t
 		end
@@ -2742,7 +2751,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					Size = newSize
 				}):Play()
 				button.Size = newSize
-				TIESASPointSave:set(string.gsub(button.Name, "_", ""), udim2Serializer(button.Position) .. "|" .. udim2Serializer(button.Size) .. "|" .. tostring(button.Visible) .. "|" .. tostring(dragger.CanBeDragged))
+				TIESASPointSave:set(string.gsub(button.Name, "_", ""), floatingButtonSerializer(button, dragger))
 			end
 			fBSFResizeDragger:Enable()
 		
@@ -2788,7 +2797,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					Scale = 0
 				}):Play()
 			end
-			TIESASPointSave:set(string.gsub(getgenv().fBSFRealButton.Name, "_", ""), udim2Serializer(getgenv().fBSFRealButton.Position) .. "|" .. udim2Serializer(getgenv().fBSFRealButton.Size) .. "|" .. tostring(getgenv().fBSFRealButton.Visible) .. "|" .. tostring(getgenv().fBSF_ButtonDragger.CanBeDragged))
+			TIESASPointSave:set(string.gsub(getgenv().fBSFRealButton.Name, "_", ""), floatingButtonSerializer(getgenv().fBSFRealButton, getgenv().fBSF_ButtonDragger))
 		end
 		
 		function FUNCTIONSmodule.ftToggleVisibility()
@@ -2819,7 +2828,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					Transparency = 0
 				}):Play()
 			end
-			TIESASPointSave:set(string.gsub(getgenv().fBSFRealButton.Name, "_", ""), udim2Serializer(getgenv().fBSFRealButton.Position) .. "|" .. udim2Serializer(getgenv().fBSFRealButton.Size) .. "|" .. tostring(getgenv().fBSFRealButton.Visible) .. "|" .. tostring(getgenv().fBSF_ButtonDragger.CanBeDragged))
+			TIESASPointSave:set(string.gsub(getgenv().fBSFRealButton.Name, "_", ""), floatingButtonSerializer(getgenv().fBSFRealButton, getgenv().fBSF_ButtonDragger))
 		end
 		
 		function FUNCTIONSmodule.createFloatingButton(item,button,buttonname,fromload,preserveSettings)
@@ -2836,7 +2845,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 				if not savedButtonData then
 					local defaultPosition = item["FloatingPosition"] or UDim2.fromOffset(125, 90)
 					local defaultSize = item["FloatingSize"] or UDim2.fromOffset(200, 50)
-					savedButtonData = udim2Serializer(defaultPosition) .. "|" .. udim2Serializer(defaultSize) .. "|true|true"
+					savedButtonData = udim2Serializer(defaultPosition) .. "|" .. udim2Serializer(defaultSize) .. "|true|true|0.5"
 					TIESASPointSave:set(normalizedName, savedButtonData)
 				end
 		
@@ -2923,6 +2932,14 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 						Size = udim2Serializer(data[2])
 					}):Play()
 					newFloatingButton.Visible = (data[3] == "true")
+					local savedTransparency = tonumber(data[5])
+					if savedTransparency then
+						newFloatingButton.BackgroundTransparency = savedTransparency
+						local hidden = savedTransparency >= 0.99
+						newFloatingButton.TextTransparency = hidden and 1 or 0
+						newFloatingButton.UIStroke.Transparency = hidden and 1 or 0
+						newFloatingButton.Lock.TextTransparency = hidden and 1 or 0
+					end
 					if data[4] == "false" then
 						newFloatingButton.Lock.UIScale.Scale = 1
 						shouldBeDraggable = false
@@ -2945,7 +2962,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					floatingButtonDraggers[string.gsub(buttonname, "_", "")]:Enable()
 				end
 				floatingButtonDraggers[string.gsub(buttonname, "_", "")].Dragged = function(newPos)
-					TIESASPointSave:set(string.gsub(buttonname, "_", ""), udim2Serializer(newPos) .. "|" .. udim2Serializer(newFloatingButton.Size) .. "|" .. tostring(newFloatingButton.Visible) .. "|" .. tostring(floatingButtonDraggers[string.gsub(buttonname, "_", "")].CanBeDragged))
+					TIESASPointSave:set(string.gsub(buttonname, "_", ""), floatingButtonSerializer(newFloatingButton, floatingButtonDraggers[string.gsub(buttonname, "_", "")]))
 				end
 		
 				local holder = ClickAndHold.new(newFloatingButton)
