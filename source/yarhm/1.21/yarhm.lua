@@ -346,7 +346,7 @@ local function bindGuiButton(guiButton, callback)
 end
 
 runtimeEnvironment.TIESAS_APP_V6_RUNTIME = appRuntime
-runtimeEnvironment.TIESAS_BUILD_ID = "V7-PREFERENCES-ANTIFLING-20260808"
+runtimeEnvironment.TIESAS_BUILD_ID = "V7-PREFERENCES-ANTIFLING-TIMER-20260808"
 
 local function notifyBeforeLoad(text)
 	pcall(function()
@@ -4567,6 +4567,102 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return getMap() ~= nil
 	end
 
+	-- Contador compacto en la zona segura superior. MM2 proporciona el tiempo
+	-- restante mediante Extras.GetTimer; las variantes sin ese remoto muestran
+	-- el tiempo transcurrido desde que aparece el mapa de la ronda.
+	local roundTimerEnabled = true
+	local roundTimerLabel = Instance.new("TextLabel")
+	roundTimerLabel.Name = "TiesasRoundTimer"
+	roundTimerLabel.AnchorPoint = Vector2.new(0.5, 0)
+	roundTimerLabel.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+	roundTimerLabel.BackgroundTransparency = 0.42
+	roundTimerLabel.BorderSizePixel = 0
+	roundTimerLabel.Font = Enum.Font.GothamSemibold
+	roundTimerLabel.Text = ""
+	roundTimerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	roundTimerLabel.TextSize = 13
+	roundTimerLabel.Size = UDim2.fromOffset(112, 28)
+	roundTimerLabel.Visible = false
+	roundTimerLabel.ZIndex = 30
+	roundTimerLabel.Parent = script.Parent
+	local roundTimerCorner = Instance.new("UICorner")
+	roundTimerCorner.CornerRadius = UDim.new(1, 0)
+	roundTimerCorner.Parent = roundTimerLabel
+	local roundTimerStroke = Instance.new("UIStroke")
+	roundTimerStroke.Color = Color3.fromRGB(255, 255, 255)
+	roundTimerStroke.Transparency = 0.78
+	roundTimerStroke.Thickness = 1
+	roundTimerStroke.Parent = roundTimerLabel
+
+	local function positionRoundTimer()
+		local topOffset = 8
+		local ok, topLeftInset = pcall(function()
+			return game:GetService("GuiService"):GetGuiInset()
+		end)
+		if ok and typeof(topLeftInset) == "Vector2" then
+			topOffset = math.max(topOffset, topLeftInset.Y + 6)
+		end
+		roundTimerLabel.Position = UDim2.new(0.5, 0, 0, topOffset)
+	end
+	positionRoundTimer()
+	runtime.cleanup(function()
+		if roundTimerLabel.Parent then roundTimerLabel:Destroy() end
+	end)
+
+	local function secondsToClock(seconds)
+		seconds = math.max(0, math.floor(seconds + 0.5))
+		return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
+	end
+
+	task.spawn(function()
+		local fallbackStartedAt
+		local getTimerRemote
+		local nextRemoteSearchAt = 0
+		while runtime.alive do
+			local active = isRoundActive()
+			if active and not fallbackStartedAt then
+				fallbackStartedAt = os.clock()
+			elseif not active then
+				fallbackStartedAt = nil
+			end
+
+			if not roundTimerEnabled or not active then
+				roundTimerLabel.Visible = false
+			else
+				local now = os.clock()
+				if (not getTimerRemote or not getTimerRemote.Parent)
+					and now >= nextRemoteSearchAt then
+					nextRemoteSearchAt = now + 3
+					local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
+					local extras = remotes and remotes:FindFirstChild("Extras")
+					local candidate = extras and extras:FindFirstChild("GetTimer")
+					getTimerRemote = candidate and candidate:IsA("RemoteFunction")
+						and candidate or nil
+				end
+
+				local serverTime
+				if getTimerRemote then
+					local ok, value = pcall(function()
+						return getTimerRemote:InvokeServer()
+					end)
+					if ok then serverTime = tonumber(value) end
+				end
+
+				if serverTime and serverTime >= 0 then
+					roundTimerLabel.Text = "RONDA · " .. secondsToClock(serverTime)
+					roundTimerLabel.Visible = true
+				elseif not getTimerRemote then
+					roundTimerLabel.Text = "RONDA · "
+						.. secondsToClock(now - (fallbackStartedAt or now))
+					roundTimerLabel.Visible = true
+				else
+					roundTimerLabel.Visible = false
+				end
+			end
+			task.wait(0.75)
+		end
+	end)
+
 	local function resolveRoles(force)
 		local now = os.clock()
 		if not force and now - lastRoleResolutionAt < 0.08 then
@@ -7416,6 +7512,14 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			if state then
 				resetAntiFling(localplayer.Character, 0.75)
 			end
+		end,}
+	})
+	table.insert(module, {
+		Type = "Toggle",
+		Default = true,
+		Args = {"Mostrar tiempo de la partida", function(Self, state)
+			roundTimerEnabled = state
+			if not state then roundTimerLabel.Visible = false end
 		end,}
 	})
 	table.insert(module, {
