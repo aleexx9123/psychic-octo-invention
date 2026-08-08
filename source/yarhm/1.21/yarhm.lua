@@ -346,7 +346,7 @@ local function bindGuiButton(guiButton, callback)
 end
 
 runtimeEnvironment.TIESAS_APP_V6_RUNTIME = appRuntime
-runtimeEnvironment.TIESAS_BUILD_ID = "V7-PREFERENCES-ANTIFLING-TIMER-R2-20260808"
+runtimeEnvironment.TIESAS_BUILD_ID = "V7-PREFERENCES-ANTIFLING-TIMER-R3-20260808"
 
 local function notifyBeforeLoad(text)
 	pcall(function()
@@ -4568,8 +4568,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	end
 
 	-- Contador compacto en la zona segura superior. MM2 proporciona el tiempo
-	-- restante mediante Extras.GetTimer; las variantes sin ese remoto muestran
-	-- el tiempo transcurrido desde que aparece el mapa de la ronda.
+	-- restante mediante Extras.GetTimer. En las variantes sin ese remoto se
+	-- detecta la cuenta previa del juego y se inicia una regresiva local de 3:00.
 	local roundTimerEnabled = true
 	local roundTimerGui = Instance.new("ScreenGui")
 	roundTimerGui.Name = "TiesasRoundTimerGui"
@@ -4651,8 +4651,33 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return false
 	end
 
+	local function isGameStartCountdownVisible()
+		local playerGui = localplayer:FindFirstChildOfClass("PlayerGui")
+		if not playerGui then return false end
+		for _, object in ipairs(playerGui:GetDescendants()) do
+			if (object:IsA("TextLabel") or object:IsA("TextButton"))
+				and mobileUiIsVisible(object) then
+				local text = string.lower(object.Text or "")
+				if string.find(text, "juego empieza", 1, true)
+					or string.find(text, "partida empieza", 1, true)
+					or string.find(text, "game starts", 1, true)
+					or string.find(text, "game begins", 1, true)
+					or string.find(text, "round starts", 1, true)
+					or string.find(text, "starting in", 1, true) then
+					return true
+				end
+			end
+		end
+		return false
+	end
+
 	task.spawn(function()
-		local fallbackStartedAt
+		local fallbackRoundEndsAt
+		local activeSince
+		local countdownSeenForRound = false
+		local countdownLastSeenAt
+		local countdownVisible = false
+		local nextCountdownScanAt = 0
 		local getTimerRemote
 		local nextRemoteSearchAt = 0
 		local nextTimerRequestAt = 0
@@ -4664,6 +4689,16 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		local lastServerTimeAt = 0
 		while runtime.alive do
 			local now = os.clock()
+			if now >= nextCountdownScanAt then
+				nextCountdownScanAt = now + 0.25
+				countdownVisible = isGameStartCountdownVisible()
+				if countdownVisible then
+					countdownSeenForRound = true
+					countdownLastSeenAt = now
+					fallbackRoundEndsAt = nil
+					lastServerTime = nil
+				end
+			end
 			if (not getTimerRemote or not getTimerRemote.Parent)
 				and now >= nextRemoteSearchAt then
 				nextRemoteSearchAt = now + 3
@@ -4711,22 +4746,42 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 			local hasFreshServerTime = lastServerTime ~= nil
 				and now - lastServerTimeAt <= 2.5
-			local active = isRoundActive() or hasAssignedRoundRole() or hasFreshServerTime
-			if active and not fallbackStartedAt then
-				fallbackStartedAt = now
-			elseif not active then
-				fallbackStartedAt = nil
+			local active = isRoundActive() or hasAssignedRoundRole()
+				or hasFreshServerTime or countdownVisible
+			if active then
+				activeSince = activeSince or now
+			else
+				activeSince = nil
+				fallbackRoundEndsAt = nil
+				countdownSeenForRound = false
+				countdownLastSeenAt = nil
 			end
+			local countdownFinishing = countdownSeenForRound
+				and countdownLastSeenAt
+				and now - countdownLastSeenAt < 0.7
 
-			if not roundTimerEnabled or not active then
+			if not roundTimerEnabled or not active or countdownFinishing then
 				roundTimerLabel.Visible = false
 			else
-				if hasFreshServerTime then
+				-- Tras desaparecer "El juego empieza en...", el primer frame válido
+				-- establece exactamente 3:00 y desde ahí solo cuenta hacia atrás.
+				if countdownSeenForRound and not fallbackRoundEndsAt then
+					fallbackRoundEndsAt = now + 180
+				elseif not countdownSeenForRound and not fallbackRoundEndsAt
+					and not hasFreshServerTime and now - (activeSince or now) >= 0.8 then
+					fallbackRoundEndsAt = now + 180
+				end
+
+				if fallbackRoundEndsAt then
+					roundTimerLabel.Text = "RONDA · "
+						.. secondsToClock(math.max(0, fallbackRoundEndsAt - now))
+				elseif hasFreshServerTime then
 					local interpolated = math.max(0, lastServerTime - (now - lastServerTimeAt))
 					roundTimerLabel.Text = "RONDA · " .. secondsToClock(interpolated)
 				else
-					roundTimerLabel.Text = "RONDA · "
-						.. secondsToClock(now - (fallbackStartedAt or now))
+					roundTimerLabel.Visible = false
+					task.wait(0.2)
+					continue
 				end
 				roundTimerLabel.Visible = true
 			end
