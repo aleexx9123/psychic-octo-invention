@@ -346,7 +346,7 @@ local function bindGuiButton(guiButton, callback)
 end
 
 runtimeEnvironment.TIESAS_APP_V6_RUNTIME = appRuntime
-runtimeEnvironment.TIESAS_BUILD_ID = "V7-PREFERENCES-ANTIFLING-TIMER-R3-20260808"
+runtimeEnvironment.TIESAS_BUILD_ID = "V7-PREFERENCES-ANTIFLING-TIMER-R4-20260808"
 
 local function notifyBeforeLoad(text)
 	pcall(function()
@@ -4567,9 +4567,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return getMap() ~= nil
 	end
 
-	-- Contador compacto en la zona segura superior. MM2 proporciona el tiempo
-	-- restante mediante Extras.GetTimer. En las variantes sin ese remoto se
-	-- detecta la cuenta previa del juego y se inicia una regresiva local de 3:00.
+	-- Contador compacto en la zona segura superior. Solo refleja una fuente real
+	-- del juego: remoto, valor replicado o temporizador de la interfaz nativa.
 	local roundTimerEnabled = true
 	local roundTimerGui = Instance.new("ScreenGui")
 	roundTimerGui.Name = "TiesasRoundTimerGui"
@@ -4641,14 +4640,99 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return nil
 	end
 
-	local function hasAssignedRoundRole()
+	local function isLocalPlayerInRound()
+		local character = localplayer.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not humanoid or humanoid.Health <= 0 or not root then return false end
+
+		local direct = playerData[localplayer] or playerData[localplayer.Name]
+		local hasStructuredRoleData = false
 		for _, data in pairs(playerData) do
-			local role = type(data) == "table" and data.Role
-			if role == "Murderer" or role == "Sheriff" or role == "Hero" then
-				return true
+			if type(data) == "table" and type(data.Role) == "string" then
+				hasStructuredRoleData = true
+				break
 			end
 		end
-		return false
+		if type(direct) == "table" then
+			local role = type(direct.Role) == "string"
+				and string.lower(direct.Role) or ""
+			return role ~= "" and role ~= "lobby" and role ~= "spectator"
+				and direct.Dead ~= true and direct.Killed ~= true
+		elseif hasStructuredRoleData then
+			return false
+		end
+
+		-- Compatibilidad para variantes sin PlayerData: comprueba que el avatar
+		-- esté físicamente dentro de los límites del mapa, no en el lobby.
+		local map = getMap()
+		if not map then return false end
+		local ok, mapCFrame, mapSize = pcall(function()
+			local pivot, size = map:GetBoundingBox()
+			return pivot, size
+		end)
+		if not ok then return false end
+		local relative = mapCFrame:PointToObjectSpace(root.Position)
+		return math.abs(relative.X) <= mapSize.X * 0.5 + 12
+			and math.abs(relative.Y) <= mapSize.Y * 0.5 + 18
+			and math.abs(relative.Z) <= mapSize.Z * 0.5 + 12
+	end
+
+	local function readVisibleGameTimer()
+		local playerGui = localplayer:FindFirstChildOfClass("PlayerGui")
+		if not playerGui then return nil end
+		local bestValue
+		local bestScore = -1
+		for _, object in ipairs(playerGui:GetDescendants()) do
+			if (object:IsA("TextLabel") or object:IsA("TextButton"))
+				and mobileUiIsVisible(object) then
+				local minutes, seconds = string.match(object.Text or "", "(%d+)%s*:%s*(%d%d)")
+				minutes, seconds = tonumber(minutes), tonumber(seconds)
+				if minutes and seconds and seconds < 60 then
+					local value = minutes * 60 + seconds
+					if value <= 600 then
+						local names = string.lower(object.Name)
+						local ancestor = object.Parent
+						for _ = 1, 3 do
+							if not ancestor then break end
+							names ..= " " .. string.lower(ancestor.Name)
+							ancestor = ancestor.Parent
+						end
+						local score = (string.find(names, "timer", 1, true)
+							or string.find(names, "time", 1, true)
+							or string.find(names, "round", 1, true)) and 2 or 1
+						if score > bestScore then
+							bestScore = score
+							bestValue = value
+						end
+					end
+				end
+			end
+		end
+		return bestValue
+	end
+
+	local replicatedTimerNames = {
+		gettimer = true,
+		timer = true,
+		timeleft = true,
+		roundtimer = true,
+		roundtime = true,
+		gametimer = true,
+		remainingtime = true,
+		timeremaining = true,
+	}
+	local function findReplicatedTimerValue()
+		for _, root in ipairs({game:GetService("ReplicatedStorage"), workspace}) do
+			for _, object in ipairs(root:GetDescendants()) do
+				if replicatedTimerNames[string.lower(object.Name)]
+					and (object:IsA("NumberValue") or object:IsA("IntValue")
+						or object:IsA("StringValue")) then
+					return object
+				end
+			end
+		end
+		return nil
 	end
 
 	local function isGameStartCountdownVisible()
@@ -4672,14 +4756,13 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	end
 
 	task.spawn(function()
-		local fallbackRoundEndsAt
-		local activeSince
-		local countdownSeenForRound = false
-		local countdownLastSeenAt
 		local countdownVisible = false
+		local previousCountdownVisible = false
 		local nextCountdownScanAt = 0
 		local getTimerRemote
 		local nextRemoteSearchAt = 0
+		local replicatedTimerValue
+		local nextReplicatedTimerSearchAt = 0
 		local nextTimerRequestAt = 0
 		local timerRequestInFlight = false
 		local timerRequestToken = 0
@@ -4693,10 +4776,30 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				nextCountdownScanAt = now + 0.25
 				countdownVisible = isGameStartCountdownVisible()
 				if countdownVisible then
-					countdownSeenForRound = true
-					countdownLastSeenAt = now
-					fallbackRoundEndsAt = nil
 					lastServerTime = nil
+				elseif previousCountdownVisible then
+					lastServerTime = nil
+					lastServerTimeAt = 0
+					nextTimerRequestAt = 0
+				else
+					local visibleTime = readVisibleGameTimer()
+					if visibleTime then
+						lastServerTime = visibleTime
+						lastServerTimeAt = now
+					end
+				end
+				previousCountdownVisible = countdownVisible
+			end
+			if (not replicatedTimerValue or not replicatedTimerValue.Parent)
+				and now >= nextReplicatedTimerSearchAt then
+				nextReplicatedTimerSearchAt = now + 3
+				replicatedTimerValue = findReplicatedTimerValue()
+			end
+			if not countdownVisible and replicatedTimerValue then
+				local replicatedTime = parseServerTimer(replicatedTimerValue.Value)
+				if replicatedTime and replicatedTime >= 0 then
+					lastServerTime = replicatedTime
+					lastServerTimeAt = now
 				end
 			end
 			if (not getTimerRemote or not getTimerRemote.Parent)
@@ -4705,8 +4808,23 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
 				local extras = remotes and remotes:FindFirstChild("Extras")
 				local candidate = extras and extras:FindFirstChild("GetTimer")
-				getTimerRemote = candidate and candidate:IsA("RemoteFunction")
-					and candidate or nil
+				if not candidate or not candidate:IsA("RemoteFunction") then
+					candidate = nil
+					for _, object in ipairs(game:GetService("ReplicatedStorage"):GetDescendants()) do
+						local name = string.lower(object.Name)
+						if object:IsA("RemoteFunction")
+							and (name == "gettimer" or name == "getroundtimer"
+								or name == "gettimeleft") then
+							candidate = object
+							break
+						end
+					end
+				end
+				if candidate ~= getTimerRemote then
+					timerRemoteUnresponsive = false
+					timerRemoteCooldownUntil = 0
+				end
+				getTimerRemote = candidate
 			end
 
 			-- InvokeServer se ejecuta fuera del bucle visual. Si una variante no
@@ -4746,43 +4864,14 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 			local hasFreshServerTime = lastServerTime ~= nil
 				and now - lastServerTimeAt <= 2.5
-			local active = isRoundActive() or hasAssignedRoundRole()
-				or hasFreshServerTime or countdownVisible
-			if active then
-				activeSince = activeSince or now
-			else
-				activeSince = nil
-				fallbackRoundEndsAt = nil
-				countdownSeenForRound = false
-				countdownLastSeenAt = nil
-			end
-			local countdownFinishing = countdownSeenForRound
-				and countdownLastSeenAt
-				and now - countdownLastSeenAt < 0.7
+			local participating = isLocalPlayerInRound()
 
-			if not roundTimerEnabled or not active or countdownFinishing then
+			if not roundTimerEnabled or not participating
+				or countdownVisible or not hasFreshServerTime then
 				roundTimerLabel.Visible = false
 			else
-				-- Tras desaparecer "El juego empieza en...", el primer frame válido
-				-- establece exactamente 3:00 y desde ahí solo cuenta hacia atrás.
-				if countdownSeenForRound and not fallbackRoundEndsAt then
-					fallbackRoundEndsAt = now + 180
-				elseif not countdownSeenForRound and not fallbackRoundEndsAt
-					and not hasFreshServerTime and now - (activeSince or now) >= 0.8 then
-					fallbackRoundEndsAt = now + 180
-				end
-
-				if fallbackRoundEndsAt then
-					roundTimerLabel.Text = "RONDA · "
-						.. secondsToClock(math.max(0, fallbackRoundEndsAt - now))
-				elseif hasFreshServerTime then
-					local interpolated = math.max(0, lastServerTime - (now - lastServerTimeAt))
-					roundTimerLabel.Text = "RONDA · " .. secondsToClock(interpolated)
-				else
-					roundTimerLabel.Visible = false
-					task.wait(0.2)
-					continue
-				end
+				local interpolated = math.max(0, lastServerTime - (now - lastServerTimeAt))
+				roundTimerLabel.Text = "RONDA · " .. secondsToClock(interpolated)
 				roundTimerLabel.Visible = true
 			end
 			task.wait(0.2)
