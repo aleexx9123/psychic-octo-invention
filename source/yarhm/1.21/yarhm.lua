@@ -346,7 +346,7 @@ local function bindGuiButton(guiButton, callback)
 end
 
 runtimeEnvironment.TIESAS_APP_V6_RUNTIME = appRuntime
-runtimeEnvironment.TIESAS_BUILD_ID = "V7-PREFERENCES-ANTIFLING-TIMER-20260808"
+runtimeEnvironment.TIESAS_BUILD_ID = "V7-PREFERENCES-ANTIFLING-TIMER-R2-20260808"
 
 local function notifyBeforeLoad(text)
 	pcall(function()
@@ -4571,6 +4571,14 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	-- restante mediante Extras.GetTimer; las variantes sin ese remoto muestran
 	-- el tiempo transcurrido desde que aparece el mapa de la ronda.
 	local roundTimerEnabled = true
+	local roundTimerGui = Instance.new("ScreenGui")
+	roundTimerGui.Name = "TiesasRoundTimerGui"
+	roundTimerGui.IgnoreGuiInset = true
+	roundTimerGui.ResetOnSpawn = false
+	roundTimerGui.DisplayOrder = 50
+	roundTimerGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	roundTimerGui:SetAttribute("TiesasAppRoot", true)
+	roundTimerGui.Parent = script.Parent.Parent
 	local roundTimerLabel = Instance.new("TextLabel")
 	roundTimerLabel.Name = "TiesasRoundTimer"
 	roundTimerLabel.AnchorPoint = Vector2.new(0.5, 0)
@@ -4584,7 +4592,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	roundTimerLabel.Size = UDim2.fromOffset(112, 28)
 	roundTimerLabel.Visible = false
 	roundTimerLabel.ZIndex = 30
-	roundTimerLabel.Parent = script.Parent
+	roundTimerLabel.Parent = roundTimerGui
 	local roundTimerCorner = Instance.new("UICorner")
 	roundTimerCorner.CornerRadius = UDim.new(1, 0)
 	roundTimerCorner.Parent = roundTimerLabel
@@ -4606,7 +4614,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	end
 	positionRoundTimer()
 	runtime.cleanup(function()
-		if roundTimerLabel.Parent then roundTimerLabel:Destroy() end
+		if roundTimerGui.Parent then roundTimerGui:Destroy() end
 	end)
 
 	local function secondsToClock(seconds)
@@ -4614,14 +4622,98 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
 	end
 
+	local function parseServerTimer(value)
+		if type(value) == "number" then return value end
+		if type(value) == "table" then
+			return tonumber(value.TimeLeft or value.Time or value.Timer or value[1])
+		end
+		if type(value) ~= "string" then return nil end
+		local direct = tonumber(value)
+		if direct then return direct end
+		local minutes, seconds = string.match(value, "(%d+)%s*:%s*(%d+)")
+		if minutes and seconds then
+			return tonumber(minutes) * 60 + tonumber(seconds)
+		end
+		minutes, seconds = string.match(string.lower(value), "(%d+)%s*m.-(%d+)%s*s")
+		if minutes and seconds then
+			return tonumber(minutes) * 60 + tonumber(seconds)
+		end
+		return nil
+	end
+
+	local function hasAssignedRoundRole()
+		for _, data in pairs(playerData) do
+			local role = type(data) == "table" and data.Role
+			if role == "Murderer" or role == "Sheriff" or role == "Hero" then
+				return true
+			end
+		end
+		return false
+	end
+
 	task.spawn(function()
 		local fallbackStartedAt
 		local getTimerRemote
 		local nextRemoteSearchAt = 0
+		local nextTimerRequestAt = 0
+		local timerRequestInFlight = false
+		local timerRequestToken = 0
+		local timerRemoteCooldownUntil = 0
+		local timerRemoteUnresponsive = false
+		local lastServerTime
+		local lastServerTimeAt = 0
 		while runtime.alive do
-			local active = isRoundActive()
+			local now = os.clock()
+			if (not getTimerRemote or not getTimerRemote.Parent)
+				and now >= nextRemoteSearchAt then
+				nextRemoteSearchAt = now + 3
+				local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
+				local extras = remotes and remotes:FindFirstChild("Extras")
+				local candidate = extras and extras:FindFirstChild("GetTimer")
+				getTimerRemote = candidate and candidate:IsA("RemoteFunction")
+					and candidate or nil
+			end
+
+			-- InvokeServer se ejecuta fuera del bucle visual. Si una variante no
+			-- responde, el timeout mantiene vivo el fallback y evita congelar el reloj.
+			if getTimerRemote and not timerRemoteUnresponsive and not timerRequestInFlight
+				and now >= nextTimerRequestAt
+				and now >= timerRemoteCooldownUntil then
+				nextTimerRequestAt = now + 0.9
+				timerRequestInFlight = true
+				timerRequestToken += 1
+				local requestToken = timerRequestToken
+				local requestRemote = getTimerRemote
+				task.spawn(function()
+					local ok, value = pcall(function()
+						return requestRemote:InvokeServer()
+					end)
+					if not runtime.alive or requestToken ~= timerRequestToken then return end
+					timerRequestInFlight = false
+					local parsed = ok and parseServerTimer(value) or nil
+					if parsed and parsed >= 0 then
+						lastServerTime = parsed
+						lastServerTimeAt = os.clock()
+					else
+						lastServerTime = nil
+					end
+				end)
+				task.delay(1.5, function()
+					if not runtime.alive or requestToken ~= timerRequestToken
+						or not timerRequestInFlight then return end
+					timerRequestToken += 1
+					timerRequestInFlight = false
+					lastServerTime = nil
+					timerRemoteCooldownUntil = math.huge
+					timerRemoteUnresponsive = true
+				end)
+			end
+
+			local hasFreshServerTime = lastServerTime ~= nil
+				and now - lastServerTimeAt <= 2.5
+			local active = isRoundActive() or hasAssignedRoundRole() or hasFreshServerTime
 			if active and not fallbackStartedAt then
-				fallbackStartedAt = os.clock()
+				fallbackStartedAt = now
 			elseif not active then
 				fallbackStartedAt = nil
 			end
@@ -4629,37 +4721,16 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			if not roundTimerEnabled or not active then
 				roundTimerLabel.Visible = false
 			else
-				local now = os.clock()
-				if (not getTimerRemote or not getTimerRemote.Parent)
-					and now >= nextRemoteSearchAt then
-					nextRemoteSearchAt = now + 3
-					local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
-					local extras = remotes and remotes:FindFirstChild("Extras")
-					local candidate = extras and extras:FindFirstChild("GetTimer")
-					getTimerRemote = candidate and candidate:IsA("RemoteFunction")
-						and candidate or nil
-				end
-
-				local serverTime
-				if getTimerRemote then
-					local ok, value = pcall(function()
-						return getTimerRemote:InvokeServer()
-					end)
-					if ok then serverTime = tonumber(value) end
-				end
-
-				if serverTime and serverTime >= 0 then
-					roundTimerLabel.Text = "RONDA · " .. secondsToClock(serverTime)
-					roundTimerLabel.Visible = true
-				elseif not getTimerRemote then
+				if hasFreshServerTime then
+					local interpolated = math.max(0, lastServerTime - (now - lastServerTimeAt))
+					roundTimerLabel.Text = "RONDA · " .. secondsToClock(interpolated)
+				else
 					roundTimerLabel.Text = "RONDA · "
 						.. secondsToClock(now - (fallbackStartedAt or now))
-					roundTimerLabel.Visible = true
-				else
-					roundTimerLabel.Visible = false
 				end
+				roundTimerLabel.Visible = true
 			end
-			task.wait(0.75)
+			task.wait(0.2)
 		end
 	end)
 
