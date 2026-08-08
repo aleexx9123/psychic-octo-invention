@@ -346,7 +346,7 @@ local function bindGuiButton(guiButton, callback)
 end
 
 runtimeEnvironment.TIESAS_APP_V6_RUNTIME = appRuntime
-runtimeEnvironment.TIESAS_BUILD_ID = "V6-UI-ORIGINAL-R4-20260729"
+runtimeEnvironment.TIESAS_BUILD_ID = "V7-PREFERENCES-ANTIFLING-20260808"
 
 local function notifyBeforeLoad(text)
 	pcall(function()
@@ -2474,6 +2474,20 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 		local States = {}
 		local toggleStates = {}
 		local rangeValueStates = {}
+		local initializedToggleStates = {}
+		local initializedGridStates = {}
+		local initializedRangeStates = {}
+		local preferencePrefix = "PreferenceV2_"
+		local function preferenceKey(kind, moduleName, optionName)
+			local raw = table.concat({kind, tostring(moduleName), tostring(optionName)}, "_")
+			return preferencePrefix .. string.gsub(raw, "[^%w_%-]", "_")
+		end
+		local function loadPreference(kind, moduleName, optionName)
+			return TIESASPointSave:get(preferenceKey(kind, moduleName, optionName))
+		end
+		local function savePreference(kind, moduleName, optionName, value)
+			TIESASPointSave:set(preferenceKey(kind, moduleName, optionName), value)
+		end
 		getgenv().TIESAS_BUTTON_HEIGHT = getgenv().TIESAS_BUTTON_HEIGHT or 34
 		getgenv().TIESAS_MENU_SCALE = getgenv().TIESAS_MENU_SCALE or 1
 		getgenv().TIESAS_MENU_BUTTON_SIZE = getgenv().TIESAS_MENU_BUTTON_SIZE or 60
@@ -2808,7 +2822,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 			TIESASPointSave:set(string.gsub(getgenv().fBSFRealButton.Name, "_", ""), udim2Serializer(getgenv().fBSFRealButton.Position) .. "|" .. udim2Serializer(getgenv().fBSFRealButton.Size) .. "|" .. tostring(getgenv().fBSFRealButton.Visible) .. "|" .. tostring(getgenv().fBSF_ButtonDragger.CanBeDragged))
 		end
 		
-		function FUNCTIONSmodule.createFloatingButton(item,button,buttonname,fromload)
+		function FUNCTIONSmodule.createFloatingButton(item,button,buttonname,fromload,preserveSettings)
 			local normalizedName = string.gsub(buttonname, "_", "")
 			local existingButton = getgenv().TIESAS.FloatingButtons:FindFirstChild(normalizedName)
 			-- La carga inicial debe ser idempotente. Antes, encontrar SHOOT ya
@@ -2820,7 +2834,10 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 				local UserInputService = game:GetService("UserInputService")
 				local savedButtonData = TIESASPointSave:get(normalizedName)
 				if not savedButtonData then
-					TIESASPointSave:set(normalizedName, udim2Serializer(UDim2.fromOffset(125, 90)) .. "|" .. udim2Serializer(UDim2.fromOffset(200,50)) .. "|true|true")
+					local defaultPosition = item["FloatingPosition"] or UDim2.fromOffset(125, 90)
+					local defaultSize = item["FloatingSize"] or UDim2.fromOffset(200, 50)
+					savedButtonData = udim2Serializer(defaultPosition) .. "|" .. udim2Serializer(defaultSize) .. "|true|true"
+					TIESASPointSave:set(normalizedName, savedButtonData)
 				end
 		
 				local newFloatingButton = getgenv().TIESAS.FloatingButton:Clone()
@@ -2982,7 +2999,9 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					appRuntime.release(connection)
 				end
 				floatingButtonGlobalConnections[normalizedName] = nil
-				TIESASPointSave:remove(string.gsub(buttonname, "_", ""))
+				if not preserveSettings then
+					TIESASPointSave:remove(string.gsub(buttonname, "_", ""))
+				end
 				task.spawn(function()
 					local buttontodestroy = getgenv().TIESAS.FloatingButtons:FindFirstChild(string.gsub(buttonname, "_", ""))
 					local btdtween = ts:Create(buttontodestroy, TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
@@ -3129,14 +3148,23 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 						button.Parent = frame
 		
 						--print(args)
-						if States[buttonname .. module.Name] == nil
-							and item["DefaultStates"]
-							and table.find(item["DefaultStates"], buttonname)
-						then
-							States[buttonname .. module.Name] = true
+						local stateKey = buttonname .. module.Name
+						local defaultState = item["DefaultStates"]
+							and table.find(item["DefaultStates"], buttonname) ~= nil
+						if States[stateKey] == nil then
+							local savedState = loadPreference("Grid", module.Name, buttonname)
+							States[stateKey] = savedState == nil and defaultState or savedState == "true"
+						end
+						if not initializedGridStates[stateKey] then
+							initializedGridStates[stateKey] = true
+							-- Los callbacks de ButtonGrid alternan la variable interna. Solo
+							-- se ejecutan al cargar cuando el valor guardado difiere del original.
+							if States[stateKey] ~= defaultState then
+								task.defer(item["Args"][2][buttonname], button)
+							end
 						end
 						button.BackgroundColor3 = FUNCTIONSmodule.getTheme().primaryColor
-						if States[buttonname .. module.Name] then
+						if States[stateKey] then
 							button.BackgroundColor3 = FUNCTIONSmodule.getTheme().accentColor
 						end
 						button.Text = string.gsub(buttonname, "_", " ")
@@ -3162,17 +3190,18 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 							if item["Toggleable"] then
 								item["Args"][2][buttonname](button)
 								--print(States[buttonname .. module.Name])
-								if States[buttonname .. module.Name] then
+								if States[stateKey] then
 									ts:Create(button, TweenInfo.new(0.3), {
 										BackgroundColor3 = FUNCTIONSmodule.getTheme().primaryColor
 									}):Play()
-									States[buttonname .. module.Name] = false
+									States[stateKey] = false
 								else
 									ts:Create(button, TweenInfo.new(0.3), {
 										BackgroundColor3 = FUNCTIONSmodule.getTheme().accentColor
 									}):Play()
-									States[buttonname .. module.Name] = true
+									States[stateKey] = true
 								end
+								savePreference("Grid", module.Name, buttonname, States[stateKey])
 							else
 								item["Args"][2][buttonname](button)
 							end
@@ -3198,10 +3227,20 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					
 					cloneinput.TextBox.BackgroundColor3 = FUNCTIONSmodule.getTheme().primaryColor
 					cloneinput.TextButton.BackgroundColor3 = FUNCTIONSmodule.getTheme().primaryColor
+					if item["Persistent"] then
+						local savedText = loadPreference("Input", module.Name, item["Args"][1])
+						if savedText ~= nil then
+							cloneinput.TextBox.Text = savedText
+							task.defer(item["Args"][3], nil, savedText)
+						end
+					end
 		
 		
 					bindGuiButton(cloneinput.TextButton, function()
 						item["Args"][3](cloneinput.TextButton, cloneinput.TextBox.Text)
+						if item["Persistent"] then
+							savePreference("Input", module.Name, item["Args"][1], cloneinput.TextBox.Text)
+						end
 					end)
 				elseif item["Type"] == "Toggle" then
 					local clonetoggle = getgenv().TIESAS.Toggle:Clone()
@@ -3218,26 +3257,38 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					
 					clonetoggletoggler.ImageLabel.ImageColor3 = FUNCTIONSmodule.getTheme().accentColor
 					clonetoggletoggler.Parent.BackgroundColor3 = FUNCTIONSmodule.getTheme().primaryColor
-					if toggleStates[item["Args"][1] .. module.Name] then
+					local stateKey = item["Args"][1] .. module.Name
+					if toggleStates[stateKey] == nil then
+						local savedState = loadPreference("Toggle", module.Name, item["Args"][1])
+						toggleStates[stateKey] = savedState == nil
+							and item["Default"] == true
+							or savedState == "true"
+					end
+					if toggleStates[stateKey] then
 						clonetoggletoggler.Position = UDim2.fromScale(0.7, 0.5)
 						clonetoggletoggler.ImageLabel.Image = "rbxassetid://5959696880"
 					end
+					if not initializedToggleStates[stateKey] then
+						initializedToggleStates[stateKey] = true
+						task.defer(item["Args"][2], clonetoggletoggler, toggleStates[stateKey])
+					end
 		
 					bindGuiButton(clonetoggletoggler, function()
-						if toggleStates[item["Args"][1] .. module.Name] then
-							toggleStates[item["Args"][1] .. module.Name] = false
+						if toggleStates[stateKey] then
+							toggleStates[stateKey] = false
 							ts:Create(clonetoggletoggler, TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
 								Position = UDim2.fromScale(0.3, 0.5)
 							}):Play()
 							clonetoggletoggler.ImageLabel.Image = "rbxassetid://10002373478"
 						else
-							toggleStates[item["Args"][1] .. module.Name] = true
+							toggleStates[stateKey] = true
 							ts:Create(clonetoggletoggler, TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
 								Position = UDim2.fromScale(0.7, 0.5)
 							}):Play()
 							clonetoggletoggler.ImageLabel.Image = "rbxassetid://5959696880"
 						end
-						item["Args"][2](clonetoggletoggler, toggleStates[item["Args"][1] .. module.Name])
+						savePreference("Toggle", module.Name, item["Args"][1], toggleStates[stateKey])
+						item["Args"][2](clonetoggletoggler, toggleStates[stateKey])
 					end)
 				elseif item["Type"] == "Dropdown" then	
 					local clonedropdown = getgenv().TIESAS.Dropdown:Clone()
@@ -3295,10 +3346,18 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					clonerange.Frame.Track.Ball.BackgroundColor3 = FUNCTIONSmodule.getTheme().accentColor
 					clonerange.Frame.Track.BackgroundColor3 = FUNCTIONSmodule.getTheme().primaryColor
 					
-					if not rangeValueStates[item["Args"][1] .. module.Name] then
-						rangeValueStates[item["Args"][1] .. module.Name] = item["Args"][2]
+					local stateKey = item["Args"][1] .. module.Name
+					if rangeValueStates[stateKey] == nil then
+						local savedValue = tonumber(loadPreference("Range", module.Name, item["Args"][1]))
+						rangeValueStates[stateKey] = math.clamp(savedValue or item["Args"][2], 0, item["Args"][3])
 					end
-					clonerange.Frame.Track.Ball.Size = UDim2.new(lrp(0.06, 1, rangeValueStates[item["Args"][1] .. module.Name] / item["Args"][3]), 0, 1, 0)
+					clonerange.Frame.Track.Ball.Size = UDim2.new(lrp(0.06, 1, rangeValueStates[stateKey] / item["Args"][3]), 0, 1, 0)
+					if not initializedRangeStates[stateKey] then
+						initializedRangeStates[stateKey] = true
+						if item["Args"][5] then
+							task.defer(item["Args"][5], clonerange, rangeValueStates[stateKey])
+						end
+					end
 		
 					local slider = DraggableObject.new(clonerange.Frame, nil, false, true)
 					slider:Enable()
@@ -3308,7 +3367,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 						if not relativeSlide then relativeSlide = pos end
 						local dragDistance = pos - relativeSlide
 						
-						local resolvedVal = rangeValueStates[item["Args"][1] .. module.Name]
+						local resolvedVal = rangeValueStates[stateKey]
 						local deltaChange = dragDistance.X.Offset
 						if math.abs(deltaChange) * 2 > item["Args"][4] then
 							resolvedVal = math.clamp(resolvedVal + deltaChange, 0, item["Args"][3])
@@ -3318,7 +3377,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 								resolvedVal = math.round(resolvedVal)
 							end
 							
-							rangeValueStates[item["Args"][1] .. module.Name] = resolvedVal
+							rangeValueStates[stateKey] = resolvedVal
 						end
 						
 						clonerange.Frame.Track.Ball.Size = UDim2.new(lrp(0.06, 1, resolvedVal / item["Args"][3]), 0, 1, 0)
@@ -3347,7 +3406,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 							}):Play()
 						end
 						
-						rangeValueStates[item["Args"][1] .. module.Name] = resolvedVal
+						rangeValueStates[stateKey] = resolvedVal
 						
 						if item["Args"][5] then
 							item["Args"][5](clonerange, resolvedVal)
@@ -3356,6 +3415,7 @@ do -- Routine Module: StarterGui.TIESAS.FUNCTIONS
 					
 					slider.DragEnded = function()
 						relativeSlide = nil
+						savePreference("Range", module.Name, item["Args"][1], rangeValueStates[stateKey])
 						ts:Create(clonerange.Frame.Track.Ball.BallProgress, TweenInfo.new(0.2), {
 							TextTransparency = 1,
 							TextStrokeTransparency = 1
@@ -4212,6 +4272,96 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	local autoGetDroppedGun = false
 	
 	local localplayer = game:GetService("Players").LocalPlayer
+	local antiFlingEnabled = true
+	local antiFlingBypassUntil = 0
+	local antiFlingCharacter
+	local antiFlingRoot
+	local antiFlingHumanoid
+	local antiFlingSafeCFrame
+	local antiFlingSafeAt = 0
+	local antiFlingLastSampleAt = 0
+	local antiFlingSuspiciousFrames = 0
+
+	local function resetAntiFling(character, graceTime)
+		antiFlingCharacter = character
+		antiFlingRoot = character and character:FindFirstChild("HumanoidRootPart")
+		antiFlingHumanoid = character and character:FindFirstChildOfClass("Humanoid")
+		antiFlingSafeCFrame = antiFlingRoot and antiFlingRoot.CFrame or nil
+		antiFlingSafeAt = os.clock()
+		antiFlingLastSampleAt = 0
+		antiFlingSuspiciousFrames = 0
+		antiFlingBypassUntil = math.max(antiFlingBypassUntil, os.clock() + (graceTime or 0))
+	end
+
+	resetAntiFling(localplayer.Character, 1.5)
+	runtime.track(localplayer.CharacterAdded:Connect(function(character)
+		resetAntiFling(character, 1.5)
+	end))
+
+	-- Protección exclusivamente local: nunca toca personajes ajenos. Conserva
+	-- una posición estable y solo interviene ante velocidades físicas imposibles
+	-- durante varios frames, evitando falsos positivos al saltar o reaparecer.
+	runtime.track(game:GetService("RunService").Heartbeat:Connect(function()
+		if not runtime.alive or not antiFlingEnabled then return end
+		local now = os.clock()
+		local character = localplayer.Character
+		if character ~= antiFlingCharacter then
+			resetAntiFling(character, 1.5)
+			return
+		end
+		if not antiFlingRoot or not antiFlingRoot.Parent then
+			antiFlingRoot = character and character:FindFirstChild("HumanoidRootPart")
+			antiFlingHumanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if not antiFlingRoot then return end
+			antiFlingSafeCFrame = antiFlingRoot.CFrame
+			antiFlingSafeAt = now
+		end
+
+		local root = antiFlingRoot
+		local humanoid = antiFlingHumanoid
+		if not humanoid or humanoid.Health <= 0 or root.Anchored
+			or humanoid.SeatPart or now < antiFlingBypassUntil then
+			antiFlingSuspiciousFrames = 0
+			return
+		end
+
+		local linear = root.AssemblyLinearVelocity
+		local angular = root.AssemblyAngularVelocity
+		local horizontalSpeed = Vector3.new(linear.X, 0, linear.Z).Magnitude
+		local suspicious = horizontalSpeed > 125
+			or linear.Magnitude > 190
+			or angular.Magnitude > 75
+		if suspicious then
+			antiFlingSuspiciousFrames += 1
+		else
+			antiFlingSuspiciousFrames = 0
+			if horizontalSpeed < 70 and angular.Magnitude < 20
+				and now - antiFlingLastSampleAt >= 0.12 then
+				antiFlingSafeCFrame = root.CFrame
+				antiFlingSafeAt = now
+				antiFlingLastSampleAt = now
+			end
+			return
+		end
+
+		local severe = horizontalSpeed > 220
+			or linear.Magnitude > 280
+			or angular.Magnitude > 140
+		if antiFlingSuspiciousFrames < 2 and not severe then return end
+
+		root.AssemblyAngularVelocity = Vector3.zero
+		root.AssemblyLinearVelocity = Vector3.new(
+			math.clamp(linear.X, -55, 55),
+			math.clamp(linear.Y, -85, 85),
+			math.clamp(linear.Z, -55, 55)
+		)
+		if severe and antiFlingSafeCFrame and now - antiFlingSafeAt <= 2 then
+			root.CFrame = antiFlingSafeCFrame
+			root.AssemblyLinearVelocity = Vector3.zero
+		end
+		antiFlingSuspiciousFrames = 0
+	end))
+
 	local bombJumpCooldowns = {
 		FakeBomb = 0,
 		GoldBomb = 0,
@@ -4307,9 +4457,13 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		end
 
 		local fired = pcall(function()
+			-- La explosión de la bomba es movimiento intencionado: el anti-fling
+			-- se aparta brevemente para conservar toda la altura del salto.
+			antiFlingBypassUntil = os.clock() + 2.25
 			remote:FireServer(root.CFrame * CFrame.new(0, -3, 0), 50)
 		end)
 		if not fired then
+			antiFlingBypassUntil = os.clock()
 			bomb.Parent = backpack
 			fu.notification("No se ha podido colocar la bomba.")
 			return
@@ -4333,12 +4487,14 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 	local normalBombJumpItem = {
 		Type = "Button",
+		FloatingPosition = UDim2.fromOffset(125, 150),
 		Args = {"NORMAL_BOMB_JUMP", function()
 			performBombJump("FakeBomb")
 		end},
 	}
 	local goldBombJumpItem = {
 		Type = "Button",
+		FloatingPosition = UDim2.fromOffset(125, 210),
 		Args = {"GOLD_BOMB_JUMP", function()
 			performBombJump("GoldBomb")
 		end},
@@ -4349,17 +4505,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		local holder = getgenv().TIESAS and getgenv().TIESAS:FindFirstChild("FloatingButtons")
 		local existing = holder and holder:FindFirstChild(name)
 		if visible and not existing then
-			fu.createFloatingButton(item, Instance.new("TextButton"), item.Args[1])
-			local targetY = item == normalBombJumpItem and 150 or 210
-			task.delay(0.8, function()
-				if not runtime.alive then return end
-				local currentHolder = getgenv().TIESAS
-					and getgenv().TIESAS:FindFirstChild("FloatingButtons")
-				local created = currentHolder and currentHolder:FindFirstChild(name)
-				if created then created.Position = UDim2.fromOffset(125, targetY) end
-			end)
+			fu.createFloatingButton(item, Instance.new("TextButton"), item.Args[1], true)
 		elseif not visible and existing then
-			fu.createFloatingButton(item, Instance.new("TextButton"), item.Args[1])
+			fu.createFloatingButton(item, Instance.new("TextButton"), item.Args[1], false, true)
 		end
 	end
 	
@@ -7244,6 +7392,16 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		end,}
 	})
 	table.insert(module, {
+		Type = "Toggle",
+		Default = true,
+		Args = {"Anti-fling", function(Self, state)
+			antiFlingEnabled = state
+			if state then
+				resetAntiFling(localplayer.Character, 0.75)
+			end
+		end,}
+	})
+	table.insert(module, {
 		Type = "Text",
 		Args = {"ACCIÓN CONTEXTUAL"}
 	})
@@ -7792,6 +7950,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	
 	table.insert(module, {
 		Type = "Input",
+		Persistent = true,
 		Args = {"Predicción de movimiento", "Aplicar", function(Self, text)
 			local value = tonumber(text)
 			if not value then fu.notification("Introduce un número válido.") return end
@@ -7800,12 +7959,13 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				return
 			end
 			shootOffset = value
-			fu.notification("Predicción actualizada.")
+			if Self then fu.notification("Predicción actualizada.") end
 		end,}
 	})
 	
 	table.insert(module, {
 		Type = "Input",
+		Persistent = true,
 		Args = {"Ajuste según el ping", "Aplicar", function(Self, text)
 			local value = tonumber(text)
 			if not value then fu.notification("Introduce un número válido.") return end
@@ -7814,7 +7974,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				return
 			end
 			offsetToPingMult = value
-			fu.notification("Ajuste de ping actualizado.")
+			if Self then fu.notification("Ajuste de ping actualizado.") end
 		end,}
 	})
 	
