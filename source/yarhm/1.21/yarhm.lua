@@ -4775,6 +4775,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			-- InvokeServer se ejecuta fuera del bucle visual. Si una variante no
 			-- responde, el timeout mantiene vivo el fallback y evita congelar el reloj.
 			if getTimerRemote and not timerRemoteUnresponsive and not timerRequestInFlight
+				and synchronizedRoundEndsAt == nil
 				and now >= nextTimerRequestAt
 				and now >= timerRemoteCooldownUntil then
 				nextTimerRequestAt = now + 0.9
@@ -4819,11 +4820,16 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				or countdownVisible or (not hasFreshServerTime and not hasSynchronizedTime) then
 				roundTimerLabel.Visible = false
 			else
+				-- Algunas variantes de MMV reutilizan Extras.GetTimer para otro
+				-- contador (por ejemplo, uno de unos 40 s). Cuando hemos observado
+				-- la cuenta previa del propio juego, ese evento es una referencia
+				-- inequívoca del comienzo y su reloj de 180 s tiene prioridad. El
+				-- remoto queda como fallback al ejecutar el script a mitad de ronda.
 				local remaining
-				if hasFreshServerTime then
-					remaining = math.max(0, lastServerTime - (now - lastServerTimeAt))
-				else
+				if hasSynchronizedTime then
 					remaining = math.max(0, synchronizedRoundEndsAt - now)
+				else
+					remaining = math.max(0, lastServerTime - (now - lastServerTimeAt))
 				end
 				local timerText = "RONDA · " .. secondsToClock(remaining)
 				if roundTimerLabel.Text ~= timerText then
@@ -5297,7 +5303,11 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		calibration = {},
 		recentShots = {},
 	}
-	local saveAimGeneration = 0
+	local aimDataDirty = false
+	local aimSaveScheduled = false
+	local lastAimWriteAt = 0
+	local lastAimBackupAt = 0
+	local previousAimPayload
 
 	local function clampVector(vector, maximum)
 		if vector.Magnitude > maximum then
@@ -5401,26 +5411,48 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	end
 
 	local function writeAimDataNow()
-		if type(writefile) ~= "function" then return end
-		pcall(function()
+		if type(writefile) ~= "function" or not aimDataDirty then return end
+		local encodedOk, payload = pcall(function()
+			return httpService:JSONEncode(aimData)
+		end)
+		if not encodedOk or type(payload) ~= "string" then return end
+
+		aimDataDirty = false
+		local writeStartedAt = os.clock()
+		local writeOk = pcall(function()
 			if type(isfolder) == "function" and type(makefolder) == "function"
 				and not isfolder(aimDataFolder) then
 				makefolder(aimDataFolder)
 			end
-			if type(isfile) == "function" and type(readfile) == "function"
-				and isfile(aimDataPath) then
-				writefile(aimDataBackupPath, readfile(aimDataPath))
+			-- No se vuelve a leer el archivo completo en cada disparo. Se conserva
+			-- en memoria la ultima version escrita y el backup se refresca como
+			-- maximo cada dos minutos, reduciendo bloqueos del executor en iOS.
+			if previousAimPayload
+				and writeStartedAt - lastAimBackupAt >= 120 then
+				writefile(aimDataBackupPath, previousAimPayload)
+				lastAimBackupAt = writeStartedAt
 			end
-			writefile(aimDataPath, httpService:JSONEncode(aimData))
+			writefile(aimDataPath, payload)
 		end)
+		if writeOk then
+			previousAimPayload = payload
+			lastAimWriteAt = os.clock()
+		else
+			aimDataDirty = true
+		end
 	end
 
 	local function scheduleAimDataSave()
 		if type(writefile) ~= "function" then return end
-		saveAimGeneration = saveAimGeneration + 1
-		local generation = saveAimGeneration
-		task.delay(1.5, function()
-			if not runtime.alive or generation ~= saveAimGeneration then return end
+		aimDataDirty = true
+		if aimSaveScheduled then return end
+		aimSaveScheduled = true
+		-- Agrupa todo el aprendizaje de una rafaga. Nunca escribe mas de una
+		-- vez cada 20 s y deja al menos 6 s desde el ultimo cambio importante.
+		local delaySeconds = math.max(6, 20 - (os.clock() - lastAimWriteAt))
+		task.delay(delaySeconds, function()
+			aimSaveScheduled = false
+			if not runtime.alive then return end
 			writeAimDataNow()
 		end)
 	end
@@ -5517,6 +5549,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			track = {
 				character = character,
 				samples = {},
+				samplePool = {},
 				lastSeenAt = now,
 			}
 			predictionTracks[player] = track
@@ -5558,6 +5591,9 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				0.004
 			)
 			if movement > math.max(15, measurementElapsed * 78) then
+				for _, sample in ipairs(samples) do
+					table.insert(track.samplePool, sample)
+				end
 				table.clear(samples)
 				track.teleportedAt = now
 			elseif measurementTime <= lastSample.time then
@@ -5565,19 +5601,20 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			end
 		end
 
-		table.insert(samples, {
-			position = position,
-			time = measurementTime,
-			arrivalTime = now,
-			receiveAge = receiveAge,
-			airborne = airborne,
-			assemblyVelocity = assemblyVelocity,
-			controllerVelocity = controllerVelocity,
-			intendedVelocity = intendedVelocity,
-		})
+		local sample = table.remove(track.samplePool)
+		if not sample then sample = {} end
+		sample.position = position
+		sample.time = measurementTime
+		sample.arrivalTime = now
+		sample.receiveAge = receiveAge
+		sample.airborne = airborne
+		sample.assemblyVelocity = assemblyVelocity
+		sample.controllerVelocity = controllerVelocity
+		sample.intendedVelocity = intendedVelocity
+		table.insert(samples, sample)
 		while #samples > 12
 			or (#samples > 3 and measurementTime - samples[1].time > 0.72) do
-			table.remove(samples, 1)
+			table.insert(track.samplePool, table.remove(samples, 1))
 		end
 		track.lastSeenAt = now
 		track.position = position
@@ -5975,14 +6012,34 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	end
 
 	local lastPingSampleAt = 0
-	local motionAccumulator = 0
+	local motionSampleBudget = 0
+	local motionSampleCursor = 1
 	local motionFrameAverage = 1 / 60
+	local backgroundSamplePlayers = {}
+	for _, player in ipairs(game.Players:GetPlayers()) do
+		if player ~= localplayer then table.insert(backgroundSamplePlayers, player) end
+	end
+	runtime.track(game.Players.PlayerAdded:Connect(function(player)
+		if player ~= localplayer then table.insert(backgroundSamplePlayers, player) end
+	end))
+	runtime.track(game.Players.PlayerRemoving:Connect(function(player)
+		predictionTracks[player] = nil
+		for index = #backgroundSamplePlayers, 1, -1 do
+			if backgroundSamplePlayers[index] == player then
+				table.remove(backgroundSamplePlayers, index)
+				if motionSampleCursor > index then
+					motionSampleCursor = motionSampleCursor - 1
+				end
+				break
+			end
+		end
+		motionSampleCursor = math.max(1, motionSampleCursor)
+	end))
 	runtime.track(rs.PostSimulation:Connect(function(deltaTime)
 		if not runtime.alive then return end
 		local now = os.clock()
 		motionFrameAverage = motionFrameAverage
 			+ (deltaTime - motionFrameAverage) * 0.06
-		motionAccumulator = motionAccumulator + deltaTime
 
 		if now - lastPingSampleAt >= 0.25 then
 			lastPingSampleAt = now
@@ -6018,16 +6075,32 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		local sampleInterval = not rolesAssigned and 0.15
 			or motionFrameAverage > 1 / 38 and 0.075
 			or 0.05
-		if motionAccumulator < sampleInterval then return end
-		motionAccumulator = math.min(
-			motionAccumulator - sampleInterval,
-			sampleInterval
+		local playerCount = #backgroundSamplePlayers
+		if playerCount == 0 then
+			motionSampleBudget = 0
+			return
+		end
+
+		-- Antes todos los jugadores se muestreaban en el mismo frame cada
+		-- 0,05 s, produciendo picos visibles. Se mantiene exactamente la misma
+		-- frecuencia media por jugador, pero se reparte el trabajo entre frames.
+		motionSampleBudget = math.min(
+			motionSampleBudget + deltaTime * playerCount / sampleInterval,
+			playerCount * 1.5
 		)
-		for _, player in ipairs(game.Players:GetPlayers()) do
-			if player ~= localplayer then
+		local samplesThisFrame = math.min(
+			math.floor(motionSampleBudget),
+			math.max(6, math.ceil(playerCount * 0.7))
+		)
+		for _ = 1, samplesThisFrame do
+			if motionSampleCursor > playerCount then motionSampleCursor = 1 end
+			local player = backgroundSamplePlayers[motionSampleCursor]
+			motionSampleCursor = motionSampleCursor + 1
+			if player and player.Parent == game.Players then
 				samplePlayerMotion(player, false, now)
 			end
 		end
+		motionSampleBudget = motionSampleBudget - samplesThisFrame
 	end))
 
 	local function getEffectivePing()
