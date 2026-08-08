@@ -346,7 +346,7 @@ local function bindGuiButton(guiButton, callback)
 end
 
 runtimeEnvironment.TIESAS_APP_V6_RUNTIME = appRuntime
-runtimeEnvironment.TIESAS_BUILD_ID = "V7-PREFERENCES-ANTIFLING-TIMER-R4-20260808"
+runtimeEnvironment.TIESAS_BUILD_ID = "V7-PREFERENCES-ANTIFLING-TIMER-R5-20260808"
 
 local function notifyBeforeLoad(text)
 	pcall(function()
@@ -4567,8 +4567,8 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		return getMap() ~= nil
 	end
 
-	-- Contador compacto en la zona segura superior. Solo refleja una fuente real
-	-- del juego: remoto, valor replicado o temporizador de la interfaz nativa.
+	-- Contador compacto en la zona segura superior. Prioriza fuentes reales del
+	-- juego y, si no existen, sincroniza 3:00 con el final de la cuenta previa.
 	local roundTimerEnabled = true
 	local roundTimerGui = Instance.new("ScreenGui")
 	roundTimerGui.Name = "TiesasRoundTimerGui"
@@ -4648,10 +4648,15 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 
 		local direct = playerData[localplayer] or playerData[localplayer.Name]
 		local hasStructuredRoleData = false
-		for _, data in pairs(playerData) do
+		for key, data in pairs(playerData) do
 			if type(data) == "table" and type(data.Role) == "string" then
 				hasStructuredRoleData = true
-				break
+				local keyPlayerName = typeof(key) == "Instance" and key:IsA("Player")
+					and key.Name or tostring(key)
+				if keyPlayerName == localplayer.Name
+					or tonumber(data.UserId or data.PlayerId) == localplayer.UserId then
+					direct = data
+				end
 			end
 		end
 		if type(direct) == "table" then
@@ -4659,8 +4664,6 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				and string.lower(direct.Role) or ""
 			return role ~= "" and role ~= "lobby" and role ~= "spectator"
 				and direct.Dead ~= true and direct.Killed ~= true
-		elseif hasStructuredRoleData then
-			return false
 		end
 
 		-- Compatibilidad para variantes sin PlayerData: comprueba que el avatar
@@ -4673,9 +4676,10 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 		end)
 		if not ok then return false end
 		local relative = mapCFrame:PointToObjectSpace(root.Position)
-		return math.abs(relative.X) <= mapSize.X * 0.5 + 12
+		local insideMap = math.abs(relative.X) <= mapSize.X * 0.5 + 12
 			and math.abs(relative.Y) <= mapSize.Y * 0.5 + 18
 			and math.abs(relative.Z) <= mapSize.Z * 0.5 + 12
+		return insideMap and (not hasStructuredRoleData or direct == nil)
 	end
 
 	local function readVisibleGameTimer()
@@ -4758,6 +4762,7 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 	task.spawn(function()
 		local countdownVisible = false
 		local previousCountdownVisible = false
+		local synchronizedRoundEndsAt
 		local nextCountdownScanAt = 0
 		local getTimerRemote
 		local nextRemoteSearchAt = 0
@@ -4776,8 +4781,12 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 				nextCountdownScanAt = now + 0.25
 				countdownVisible = isGameStartCountdownVisible()
 				if countdownVisible then
+					synchronizedRoundEndsAt = nil
 					lastServerTime = nil
 				elseif previousCountdownVisible then
+					-- El propio juego marca el instante de inicio al retirar su cuenta
+					-- previa. Desde ese momento la duración configurada es de 180 s.
+					synchronizedRoundEndsAt = now + 180
 					lastServerTime = nil
 					lastServerTimeAt = 0
 					nextTimerRequestAt = 0
@@ -4865,13 +4874,19 @@ local function XXZOB_routine() -- Routine: StarterGui.TIESAS.Murder Mystery 2
 			local hasFreshServerTime = lastServerTime ~= nil
 				and now - lastServerTimeAt <= 2.5
 			local participating = isLocalPlayerInRound()
+			local hasSynchronizedTime = synchronizedRoundEndsAt ~= nil
 
 			if not roundTimerEnabled or not participating
-				or countdownVisible or not hasFreshServerTime then
+				or countdownVisible or (not hasFreshServerTime and not hasSynchronizedTime) then
 				roundTimerLabel.Visible = false
 			else
-				local interpolated = math.max(0, lastServerTime - (now - lastServerTimeAt))
-				roundTimerLabel.Text = "RONDA · " .. secondsToClock(interpolated)
+				local remaining
+				if hasFreshServerTime then
+					remaining = math.max(0, lastServerTime - (now - lastServerTimeAt))
+				else
+					remaining = math.max(0, synchronizedRoundEndsAt - now)
+				end
+				roundTimerLabel.Text = "RONDA · " .. secondsToClock(remaining)
 				roundTimerLabel.Visible = true
 			end
 			task.wait(0.2)
